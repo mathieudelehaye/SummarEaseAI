@@ -1,0 +1,7 @@
+streamlit
+flask
+wikipedia-api
+langchain
+openai
+tensorflow
+requests
