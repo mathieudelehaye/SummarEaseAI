@@ -9,18 +9,30 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.wikipedia_fetcher import fetch_article, search_and_fetch_article
-from backend.summarizer import summarize_article_with_limit, summarize_article
+from backend.summarizer import summarize_article_with_limit, summarize_article, get_summarization_status
 from tensorflow_models.intent_classifier import get_intent_classifier
 
-# Import Hugging Face modules
+# Import Hugging Face modules with error handling
 try:
     from backend.hf_summarizer import get_hf_summarizer, summarize_with_huggingface
-    from tensorflow_models.bert_intent_classifier import get_bert_intent_classifier, predict_intent_with_bert
-    from utils.semantic_search import semantic_search_wikipedia, get_semantic_search
-    HF_AVAILABLE = True
+    HF_SUMMARIZER_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Hugging Face modules not available: {e}")
-    HF_AVAILABLE = False
+    logging.warning(f"Hugging Face summarizer not available: {e}")
+    HF_SUMMARIZER_AVAILABLE = False
+
+try:
+    from tensorflow_models.bert_intent_classifier import get_bert_intent_classifier, predict_intent_with_bert
+    HF_BERT_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"BERT classifier not available: {e}")
+    HF_BERT_AVAILABLE = False
+
+try:
+    from utils.semantic_search import semantic_search_wikipedia, get_semantic_search
+    HF_SEMANTIC_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Semantic search not available: {e}")
+    HF_SEMANTIC_AVAILABLE = False
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -32,11 +44,15 @@ CORS(app)  # Enable CORS for Streamlit integration
 # Initialize intent classifiers
 intent_classifier = get_intent_classifier()
 bert_classifier = None
-if HF_AVAILABLE:
-    bert_classifier = get_bert_intent_classifier()
+if HF_BERT_AVAILABLE:
+    try:
+        bert_classifier = get_bert_intent_classifier()
+    except Exception as e:
+        logger.warning(f"Could not initialize BERT classifier: {e}")
+        HF_BERT_AVAILABLE = False
 
 # Try to load pre-trained models
-model_loaded = intent_classifier.load_model("tensorflow_models/saved_model")
+tf_model_loaded = intent_classifier.load_model("tensorflow_models/saved_model")
 bert_model_loaded = False
 if bert_classifier:
     try:
@@ -44,8 +60,17 @@ if bert_classifier:
     except Exception as e:
         logger.warning(f"BERT model not available: {e}")
 
-if not model_loaded:
-    logger.warning("TensorFlow model not found. Intent classification will use fallback.")
+# Get summarization status
+summarization_status = get_summarization_status()
+
+# Set consolidated availability flags
+HF_AVAILABLE = HF_SUMMARIZER_AVAILABLE or HF_BERT_AVAILABLE or HF_SEMANTIC_AVAILABLE
+
+logger.info(f"TensorFlow model loaded: {tf_model_loaded}")
+logger.info(f"Hugging Face summarizer available: {HF_SUMMARIZER_AVAILABLE}")
+logger.info(f"BERT classifier available: {HF_BERT_AVAILABLE}")
+logger.info(f"Semantic search available: {HF_SEMANTIC_AVAILABLE}")
+logger.info(f"OpenAI summarization ready: {summarization_status['summarization_ready']}")
 
 @app.route('/', methods=['GET'])
 def home():
@@ -55,7 +80,7 @@ def home():
         'status': 'running',
         'version': '2.0.0',
         'features': {
-            'tensorflow_intent_model': model_loaded,
+            'tensorflow_intent_model': tf_model_loaded,
             'bert_intent_model': bert_model_loaded if HF_AVAILABLE else False,
             'huggingface_summarization': HF_AVAILABLE,
             'openai_summarization': True,
@@ -99,7 +124,7 @@ def predict_intent():
             'predicted_intent': intent,
             'confidence': confidence,
             'model_type': 'TensorFlow LSTM',
-            'model_loaded': model_loaded
+            'model_loaded': tf_model_loaded
         }
         
         logger.info(f"TF Intent prediction - Text: '{text}' -> Intent: {intent} (confidence: {confidence:.3f})")
@@ -163,7 +188,7 @@ def summarize():
         predicted_intent = None
         intent_confidence = 0.0
         
-        if use_intent and model_loaded:
+        if use_intent and tf_model_loaded:
             predicted_intent, intent_confidence = intent_classifier.predict_intent(topic)
             logger.info(f"Predicted intent: {predicted_intent} (confidence: {intent_confidence:.3f})")
         
@@ -316,7 +341,7 @@ def compare_models():
         results = {}
         
         # TensorFlow LSTM model
-        if model_loaded:
+        if tf_model_loaded:
             tf_intent, tf_confidence = intent_classifier.predict_intent(text)
             results['tensorflow_lstm'] = {
                 'intent': tf_intent,
@@ -390,7 +415,7 @@ if __name__ == '__main__':
     
     logger.info(f"Starting SummarEaseAI Backend API v2.0 on port {port}")
     logger.info(f"Debug mode: {debug}")
-    logger.info(f"TensorFlow model loaded: {model_loaded}")
+    logger.info(f"TensorFlow model loaded: {tf_model_loaded}")
     logger.info(f"Hugging Face available: {HF_AVAILABLE}")
     logger.info(f"BERT model loaded: {bert_model_loaded}")
     
