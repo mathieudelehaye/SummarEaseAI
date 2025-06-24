@@ -8,7 +8,7 @@ import logging
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.wikipedia_fetcher import fetch_article, search_and_fetch_article
+from utils.wikipedia_fetcher import fetch_article, search_and_fetch_article, fetch_article_with_conversion_info
 from backend.summarizer import summarize_article_with_limit, summarize_article, get_summarization_status
 from tensorflow_models.intent_classifier import get_intent_classifier
 
@@ -192,13 +192,17 @@ def summarize():
             predicted_intent, intent_confidence = intent_classifier.predict_intent(topic)
             logger.info(f"Predicted intent: {predicted_intent} (confidence: {intent_confidence:.3f})")
         
-        # Fetch article content
-        article_text = fetch_article(topic)
+        # Fetch article content with conversion info
+        article_text, processed_topic, was_converted = fetch_article_with_conversion_info(topic)
+        
+        # Log query conversion before sending to ChatOpenAI
+        if was_converted:
+            logger.info(f"📝 Query conversion detected: '{topic}' -> '{processed_topic}' before sending to ChatOpenAI gpt-3.5-turbo-16k")
         
         if not article_text:
             # Try search-based retrieval
-            logger.info(f"Direct article not found, trying search for: {topic}")
-            article_text = search_and_fetch_article(topic)
+            logger.info(f"Direct article not found, trying search for: {processed_topic if was_converted else topic}")
+            article_text = search_and_fetch_article(processed_topic if was_converted else topic)
         
         if not article_text:
             return jsonify({
@@ -222,6 +226,8 @@ def summarize():
         
         response = {
             'topic': topic,
+            'processed_topic': processed_topic if was_converted else topic,
+            'query_converted': was_converted,
             'summary': summary,
             'predicted_intent': predicted_intent,
             'intent_confidence': intent_confidence,
@@ -258,11 +264,15 @@ def summarize_local():
         
         logger.info(f"Local HF Summarization request - Topic: '{topic}', Model: {model_name}")
         
-        # Fetch article content
-        article_text = fetch_article(topic)
+        # Fetch article content with conversion info
+        article_text, processed_topic, was_converted = fetch_article_with_conversion_info(topic)
+        
+        # Log query conversion for HF models too
+        if was_converted:
+            logger.info(f"📝 Query conversion detected: '{topic}' -> '{processed_topic}' before sending to Hugging Face {model_name}")
         
         if not article_text:
-            article_text = search_and_fetch_article(topic)
+            article_text = search_and_fetch_article(processed_topic if was_converted else topic)
         
         if not article_text:
             return jsonify({'error': f'No Wikipedia article found for topic: {topic}'}), 404
