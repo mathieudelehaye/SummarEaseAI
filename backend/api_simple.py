@@ -103,6 +103,11 @@ HTML_TEMPLATE = """
             <code>{"query": "your search query"}</code>
         </div>
 
+        <div class="endpoint">
+            <strong>POST /summarize_agentic</strong> - Agentic summarization with OpenAI query optimization and page selection<br>
+            <code>{"query": "your search query"}</code>
+        </div>
+
         <p><strong>Frontend URL:</strong> <a href="http://localhost:8501" target="_blank">http://localhost:8501</a></p>
         <p><strong>Backend URL:</strong> <a href="http://localhost:5000" target="_blank">http://localhost:5000</a></p>
     </div>
@@ -129,7 +134,7 @@ def status():
             'wikipedia_fetching': True,
             'huggingface_features': False
         },
-        'endpoints': ['/status', '/summarize', '/predict_intent', '/search_wikipedia', '/summarize_enhanced']
+        'endpoints': ['/status', '/summarize', '/predict_intent', '/search_wikipedia', '/summarize_enhanced', '/summarize_agentic']
     })
 
 @app.route('/health')
@@ -301,14 +306,21 @@ def summarize_enhanced():
         # Step 2: Enhance search query based on intent
         enhanced_query = enhance_query_with_intent(query, intent, confidence)
         
-        # Step 3: Search Wikipedia with enhanced query
-        article_info = search_and_fetch_article_info(enhanced_query)
-        if not article_info or 'content' not in article_info:
-            # Fallback to original query if enhanced search fails
-            logger.info("Enhanced search failed, trying original query")
-            article_info = search_and_fetch_article_info(query)
+        # Step 3: Search Wikipedia with simple agentic approach
+        try:
+            from utils.wikipedia_fetcher import search_and_fetch_article_agentic_simple
+            article_info = search_and_fetch_article_agentic_simple(query)  # Use original query for agentic optimization
+        except ImportError:
+            logger.warning("🚫 Simple agentic search not available - falling back to enhanced search")
+            # Fallback to enhanced query approach
+            article_info = search_and_fetch_article_info(enhanced_query)
             if not article_info or 'content' not in article_info:
-                return jsonify({'error': 'Could not fetch Wikipedia article'}), 404
+                # Fallback to original query if enhanced search fails
+                logger.info("Enhanced search failed, trying original query")
+                article_info = search_and_fetch_article_info(query)
+        
+        if not article_info or 'content' not in article_info:
+            return jsonify({'error': 'Could not fetch Wikipedia article'}), 404
         
         # Step 4: Intent-aware summarization
         summary_result = summarize_article_with_intent(
@@ -342,6 +354,106 @@ def summarize_enhanced():
     except Exception as e:
         logger.error(f"Error in enhanced summarization: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+# Add new endpoint for agentic enhanced summarization
+@app.route('/summarize_agentic', methods=['POST'])
+def summarize_agentic():
+    """Agentic summarization with OpenAI query optimization and page selection"""
+    try:
+        data = request.json
+        if not data or 'query' not in data:
+            return jsonify({'error': 'Missing query parameter'}), 400
+        
+        query = data['query'].strip()
+        if not query:
+            return jsonify({'error': 'Empty query provided'}), 400
+        
+        logger.info(f"🤖 Agentic summarization request: '{query}'")
+        
+        # Check if we have OpenAI available
+        from backend.summarizer import get_openai_api_key, LANGCHAIN_AVAILABLE
+        
+        if not LANGCHAIN_AVAILABLE or not get_openai_api_key():
+            logger.info("🚫 OpenAI not available - falling back to enhanced method")
+            return summarize_enhanced()
+        
+        # Step 1: Predict intent (existing logic)
+        keyword_intent, keyword_confidence = classify_intent_keywords(query)
+        
+        tf_intent = None
+        tf_confidence = 0.0
+        if tf_model_loaded:
+            try:
+                tf_intent, tf_confidence = intent_classifier.predict_intent(query)
+                logger.info(f"TF prediction - Text: '{query}' -> Intent: {tf_intent} (confidence: {tf_confidence:.3f})")
+            except Exception as e:
+                logger.error(f"Error with TensorFlow prediction: {e}")
+        
+        # Choose the best intent prediction
+        if keyword_confidence > 0.5:
+            final_intent = keyword_intent
+            final_confidence = keyword_confidence
+            model_used = "Keyword-based"
+        elif tf_confidence > keyword_confidence:
+            final_intent = tf_intent
+            final_confidence = tf_confidence
+            model_used = "TensorFlow LSTM"
+        else:
+            final_intent = keyword_intent
+            final_confidence = keyword_confidence
+            model_used = "Keyword-based"
+        
+        logger.info(f"Intent detected: {final_intent} (confidence: {final_confidence:.3f}, model: {model_used})")
+        
+        # Step 2: Use agentic Wikipedia search
+        try:
+            from utils.wikipedia_fetcher import search_and_fetch_article_agentic
+            article_info = search_and_fetch_article_agentic(query)
+        except ImportError:
+            logger.warning("🚫 Agentic search not available - falling back to basic search")
+            article_info = search_and_fetch_article_info(query)
+        
+        if not article_info or 'content' not in article_info:
+            return jsonify({'error': 'Could not fetch Wikipedia article'}), 404
+        
+        # Step 3: Intent-aware summarization (existing logic)
+        summary_result = summarize_article_with_intent(
+            article_info['content'], 
+            article_info.get('title', 'Unknown'),
+            final_intent, 
+            final_confidence
+        )
+        
+        if not summary_result:
+            return jsonify({'error': 'Could not generate summary'}), 500
+        
+        # Build enhanced response
+        response = {
+            'query': query,
+            'title': article_info.get('title', 'Unknown'),
+            'url': article_info.get('url', ''),
+            'summary': summary_result.get('summary', 'Summary not available'),
+            'method': summary_result.get('method', 'unknown'),
+            'word_count': summary_result.get('word_count', {}),
+            'intent_detection': {
+                'predicted_intent': final_intent,
+                'confidence': final_confidence,
+                'model_used': model_used
+            },
+            'search_method': article_info.get('search_method', 'agentic'),
+            'openai_optimization': {
+                'original_query': article_info.get('original_query', query),
+                'optimized_query': article_info.get('optimized_query', query),
+                'selected_from': article_info.get('selected_from', [])
+            }
+        }
+        
+        logger.info(f"✅ Agentic summarization completed successfully")
+        return jsonify(response)
+       
+    except Exception as e:
+        logger.error(f"Error in agentic summarization: {str(e)}")
+        return jsonify({'error': f'Summarization failed: {str(e)}'}), 500
 
 # Add a simple but effective keyword-based classifier
 def classify_intent_keywords(text):
