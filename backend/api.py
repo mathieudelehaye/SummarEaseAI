@@ -12,27 +12,48 @@ from utils.wikipedia_fetcher import fetch_article, search_and_fetch_article, fet
 from backend.summarizer import summarize_article_with_limit, summarize_article, get_summarization_status
 from tensorflow_models.intent_classifier import get_intent_classifier
 
-# Import Hugging Face modules with error handling
+# Check if DirectML is available and disable conflicting imports
+DIRECTML_MODE = False
 try:
-    from backend.hf_summarizer import get_hf_summarizer, summarize_with_huggingface
-    HF_SUMMARIZER_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Hugging Face summarizer not available: {e}")
+    import tensorflow as tf
+    devices = tf.config.list_physical_devices('GPU')
+    if devices and any('DML' in str(device) for device in devices):
+        DIRECTML_MODE = True
+        logging.info("DirectML GPU detected - running in DirectML compatibility mode")
+        logging.info("Disabling Hugging Face imports to avoid TensorFlow conflicts")
+except:
+    pass
+
+# Import Hugging Face modules only if not in DirectML mode
+if not DIRECTML_MODE:
+    try:
+        from backend.hf_summarizer import get_hf_summarizer, summarize_with_huggingface
+        HF_SUMMARIZER_AVAILABLE = True
+    except ImportError as e:
+        logging.warning(f"Hugging Face summarizer not available: {e}")
+        HF_SUMMARIZER_AVAILABLE = False
+    
+    try:
+        from tensorflow_models.bert_intent_classifier import get_bert_intent_classifier, predict_intent_with_bert
+        HF_BERT_AVAILABLE = True
+    except ImportError as e:
+        logging.warning(f"BERT classifier not available: {e}")
+        HF_BERT_AVAILABLE = False
+    
+    try:
+        from utils.semantic_search import semantic_search_wikipedia, get_semantic_search
+        HF_SEMANTIC_AVAILABLE = True
+    except ImportError as e:
+        logging.warning(f"Semantic search not available: {e}")
+        HF_SEMANTIC_AVAILABLE = False
+else:
+    # DirectML mode - disable all Hugging Face features
     HF_SUMMARIZER_AVAILABLE = False
-
-try:
-    from tensorflow_models.bert_intent_classifier import get_bert_intent_classifier, predict_intent_with_bert
-    HF_BERT_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"BERT classifier not available: {e}")
     HF_BERT_AVAILABLE = False
-
-try:
-    from utils.semantic_search import semantic_search_wikipedia, get_semantic_search
-    HF_SEMANTIC_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Semantic search not available: {e}")
     HF_SEMANTIC_AVAILABLE = False
+    bert_classifier = None
+    predict_intent_with_bert = None
+    logging.info("Hugging Face features disabled for DirectML compatibility")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -43,13 +64,15 @@ CORS(app)  # Enable CORS for Streamlit integration
 
 # Initialize intent classifiers
 intent_classifier = get_intent_classifier()
-bert_classifier = None
-if HF_BERT_AVAILABLE:
+
+# Initialize BERT classifier only if available
+if HF_BERT_AVAILABLE and bert_classifier is None:
     try:
         bert_classifier = get_bert_intent_classifier()
     except Exception as e:
         logger.warning(f"Could not initialize BERT classifier: {e}")
         HF_BERT_AVAILABLE = False
+        bert_classifier = None
 
 # Try to load pre-trained models
 tf_model_loaded = intent_classifier.load_model("tensorflow_models/saved_model")
@@ -137,8 +160,8 @@ def predict_intent():
 @app.route('/predict_intent_bert', methods=['POST'])
 def predict_intent_bert():
     """Predict intent using BERT model"""
-    if not HF_AVAILABLE or not bert_classifier:
-        return jsonify({'error': 'BERT model not available'}), 503
+    if not HF_BERT_AVAILABLE or not bert_classifier:
+        return jsonify({'error': 'BERT model not available (disabled for DirectML compatibility)'}), 503
     
     try:
         data = request.json

@@ -160,3 +160,122 @@ def fetch_article_with_conversion_info(topic: str) -> tuple[Optional[str], str, 
     except Exception as e:
         logger.error(f"Error fetching article with conversion info '{topic}': {str(e)}")
         return None, topic, False
+
+def enhance_query_with_intent(query: str, intent: str, confidence: float) -> str:
+    """
+    Enhance search query based on detected intent to get better Wikipedia results
+    
+    Args:
+        query: Original user query
+        intent: Detected intent category
+        confidence: Confidence score of intent prediction
+        
+    Returns:
+        Enhanced query string for better Wikipedia search
+    """
+    # Only enhance if we have high confidence in the intent
+    if confidence < 0.4:
+        return query
+    
+    # Intent-based query enhancement patterns
+    intent_enhancements = {
+        'Science': {
+            'keywords': ['scientific', 'theory', 'principle', 'mechanism', 'process'],
+            'suffixes': ['science', 'physics', 'chemistry', 'biology']
+        },
+        'History': {
+            'keywords': ['historical', 'timeline', 'events', 'period'],
+            'suffixes': ['history', 'timeline', 'events']
+        },
+        'Biography': {
+            'keywords': ['biography', 'life', 'achievements', 'career'],
+            'suffixes': ['biography', 'life']
+        },
+        'Technology': {
+            'keywords': ['technology', 'innovation', 'development', 'advancement'],
+            'suffixes': ['technology', 'innovation']
+        },
+        'Sports': {
+            'keywords': ['sports', 'game', 'competition', 'tournament'],
+            'suffixes': ['sports', 'game']
+        },
+        'Arts': {
+            'keywords': ['art', 'artistic', 'cultural', 'creative'],
+            'suffixes': ['art', 'culture']
+        },
+        'Politics': {
+            'keywords': ['political', 'government', 'policy'],
+            'suffixes': ['politics', 'government']
+        },
+        'Geography': {
+            'keywords': ['geographic', 'location', 'region'],
+            'suffixes': ['geography', 'location']
+        }
+    }
+    
+    if intent in intent_enhancements:
+        enhancement = intent_enhancements[intent]
+        
+        # Check if query already contains intent-related keywords
+        query_lower = query.lower()
+        has_intent_keywords = any(keyword in query_lower for keyword in enhancement['keywords'])
+        
+        if not has_intent_keywords:
+            # Add the most relevant suffix
+            enhanced_query = f"{query} {enhancement['suffixes'][0]}"
+            logger.info(f"Enhanced query with intent '{intent}': '{query}' -> '{enhanced_query}'")
+            return enhanced_query
+    
+    return query
+
+def search_and_fetch_article_info(query: str, max_results: int = 1) -> Optional[Dict[str, str]]:
+    """
+    Search Wikipedia and fetch article with complete information
+    
+    Returns:
+        Dictionary with content, title, url, and summary, or None if not found
+    """
+    try:
+        # Preprocess historical queries
+        processed_query, was_converted = preprocess_historical_query(query)
+        
+        # Use wikipedia library for better search functionality
+        search_results = wikipedia.search(processed_query, results=max_results + 2)
+        
+        for result in search_results:
+            try:
+                page = wikipedia.page(result)
+                logger.info(f"Found and fetched article: {result}")
+                logger.info(f"🔗 Search result URL: {page.url}")
+                logger.info(f"📝 Search result page title: {page.title}")
+                content_preview = page.content[:500] + "..." if len(page.content) > 500 else page.content
+                logger.info(f"📄 Search result content starts with: {content_preview}")
+                
+                return {
+                    'content': page.content,
+                    'title': page.title,
+                    'url': page.url,
+                    'summary': page.summary
+                }
+            except wikipedia.exceptions.DisambiguationError as e:
+                # Handle disambiguation pages by taking the first option
+                try:
+                    page = wikipedia.page(e.options[0])
+                    logger.info(f"Resolved disambiguation to: {e.options[0]}")
+                    return {
+                        'content': page.content,
+                        'title': page.title,
+                        'url': page.url,
+                        'summary': page.summary
+                    }
+                except Exception:
+                    continue
+            except Exception:
+                continue
+        
+        logger.warning(f"No suitable article found for query: {query}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error searching for article '{query}': {str(e)}")
+        return None

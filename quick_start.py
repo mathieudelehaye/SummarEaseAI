@@ -98,6 +98,19 @@ def check_optional_features():
         "Basic Intent Classification": True,  # Fallback always available
     }
     
+    # Check for DirectML GPU support
+    directml_available = False
+    try:
+        import tensorflow as tf
+        devices = tf.config.list_physical_devices('GPU')
+        if devices and any('DML' in str(device) for device in devices):
+            directml_available = True
+            features["🚀 DirectML GPU (RTX 4070)"] = True
+        else:
+            features["GPU Acceleration"] = False
+    except:
+        features["GPU Acceleration"] = False
+    
     # Check optional AI/ML features with better error handling
     try:
         import tensorflow as tf
@@ -110,7 +123,12 @@ def check_optional_features():
     
     try:
         import transformers
-        features["🤗 Hugging Face Transformers"] = True
+        # If DirectML is available, Transformers might conflict
+        if directml_available:
+            print(f"  ⚠️ Hugging Face disabled for DirectML compatibility")
+            features["🤗 Hugging Face (DirectML disabled)"] = False
+        else:
+            features["🤗 Hugging Face Transformers"] = True
     except ImportError:
         features["🤗 Hugging Face Transformers"] = False
     except Exception as e:
@@ -148,6 +166,13 @@ def check_optional_features():
         print("\n💡 To enable missing features, they're included in requirements.txt:")
         print("   pip install -r requirements.txt")
     
+    # DirectML compatibility info
+    if directml_available:
+        print("\n🚀 DirectML GPU detected - using compatibility mode:")
+        print("   • GPU training: ✅ Available for TensorFlow models")
+        print("   • Backend: ✅ Uses DirectML-compatible version")
+        print("   • Hugging Face: ⚠️ Disabled to avoid conflicts")
+    
     return features
 
 def start_application():
@@ -155,7 +180,7 @@ def start_application():
     print("\n🚀 Starting SummarEaseAI...")
     
     # Check if we're in the right directory
-    if not Path("backend/api.py").exists():
+    if not Path("backend/api_simple.py").exists():
         print("❌ Please run this script from the SummarEaseAI root directory")
         return False
     
@@ -164,7 +189,7 @@ def start_application():
     print("  🔗 Frontend UI: http://localhost:8501")
     
     print("\n💡 Manual startup commands:")
-    print("  Terminal 1: cd backend && python api.py")
+    print("  Terminal 1: python backend/api_simple.py  (DirectML compatible)")
     print("  Terminal 2: streamlit run app.py")
     
     # Ask user how they want to start
@@ -177,13 +202,12 @@ def start_application():
         choice = input("\nChoose option (1-3): ").strip()
         
         if choice == "1":
-            print("\n🔄 Starting backend API...")
+            print("\n🔄 Starting DirectML-compatible backend API...")
             print("💡 After backend starts, run in another terminal: streamlit run app.py")
             print("🛑 Press Ctrl+C to stop the backend")
             
-            # Change to backend directory and start API
-            os.chdir("backend")
-            subprocess.call([sys.executable, "api.py"])
+            # Start the DirectML-compatible API
+            subprocess.call([sys.executable, "backend/api_simple.py"])
             
         elif choice == "2":
             print("\n✅ Use the manual commands above to start both services")

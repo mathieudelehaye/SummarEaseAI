@@ -482,6 +482,255 @@ def summarize_article_with_limit(article_text: str, max_lines: int = 30) -> str:
         logger.error(f"Error during line-limited summarization: {str(e)}")
         return f"Error generating summary: {str(e)}"
 
+def create_intent_aware_chain(intent: str, confidence: float):
+    """Create a summarization chain tailored to the detected intent"""
+    if not LANGCHAIN_AVAILABLE:
+        return None
+    
+    api_key = get_openai_api_key()
+    if not api_key:
+        return None
+    
+    try:
+        llm = ChatOpenAI(
+            openai_api_key=api_key,
+            model_name="gpt-3.5-turbo-16k",
+            temperature=0.3,
+            max_tokens=1000
+        )
+        
+        # Intent-specific prompt templates
+        intent_prompts = {
+            'Science': """
+            Please provide a comprehensive scientific summary of the following article.
+            Focus on: scientific principles, theories, mechanisms, research findings, and discoveries.
+            Explain complex concepts in an accessible way while maintaining scientific accuracy.
+            Include key discoveries, methodologies, and the scientific significance of the topic.
+            
+            Article Content:
+            {article_text}
+            
+            Scientific Summary:
+            """,
+            
+            'History': """
+            Please provide a comprehensive historical summary of the following article.
+            Focus on: key historical events, timeline, important figures, causes and effects.
+            Emphasize the historical significance, context, and impact on subsequent events.
+            Include dates, locations, and the broader historical context.
+            
+            Article Content:
+            {article_text}
+            
+            Historical Summary:
+            """,
+            
+            'Biography': """
+            Please provide a comprehensive biographical summary of the following article.
+            Focus on: life story, major achievements, career milestones, personal background.
+            Emphasize key contributions, impact on their field, and historical significance.
+            Include birth/death dates, education, career progression, and legacy.
+            
+            Article Content:
+            {article_text}
+            
+            Biographical Summary:
+            """,
+            
+            'Technology': """
+            Please provide a comprehensive technology summary of the following article.
+            Focus on: technological innovations, development process, applications, and impact.
+            Explain how the technology works, its advantages, limitations, and future potential.
+            Include technical specifications, adoption timeline, and industry significance.
+            
+            Article Content:
+            {article_text}
+            
+            Technology Summary:
+            """,
+            
+            'Sports': """
+            Please provide a comprehensive sports summary of the following article.
+            Focus on: game rules, competition history, notable athletes, records and achievements.
+            Emphasize sporting significance, competition formats, and cultural impact.
+            Include key statistics, memorable moments, and the sport's evolution.
+            
+            Article Content:
+            {article_text}
+            
+            Sports Summary:
+            """,
+            
+            'Arts': """
+            Please provide a comprehensive arts and culture summary of the following article.
+            Focus on: artistic movements, creative techniques, cultural significance, and influence.
+            Emphasize aesthetic qualities, historical context, and impact on art/culture.
+            Include artistic style, medium, period, and cultural relevance.
+            
+            Article Content:
+            {article_text}
+            
+            Arts & Culture Summary:
+            """,
+            
+            'Politics': """
+            Please provide a comprehensive political summary of the following article.
+            Focus on: political systems, policies, governance, and political figures.
+            Emphasize political significance, policy implications, and governmental impact.
+            Include political context, institutional roles, and policy outcomes.
+            
+            Article Content:
+            {article_text}
+            
+            Political Summary:
+            """,
+            
+            'Geography': """
+            Please provide a comprehensive geographic summary of the following article.
+            Focus on: location, physical features, climate, population, and geographical significance.
+            Emphasize geographical characteristics, environmental aspects, and spatial relationships.
+            Include coordinates, regional context, and geographical importance.
+            
+            Article Content:
+            {article_text}
+            
+            Geographic Summary:
+            """
+        }
+        
+        # Use intent-specific prompt if available and confidence is high enough
+        if intent in intent_prompts and confidence >= 0.5:
+            prompt_template = intent_prompts[intent]
+            logger.info(f"Using intent-aware summarization for '{intent}' category (confidence: {confidence:.3f})")
+        else:
+            # Fall back to general prompt
+            prompt_template = """
+            Please provide a comprehensive summary of the following article content.
+            Make the summary informative, well-structured, and easy to understand.
+            Focus on the main topics, key information, and significance described in the article.
+            
+            Article Content:
+            {article_text}
+            
+            Summary:
+            """
+            logger.info(f"Using general summarization (intent: {intent}, confidence: {confidence:.3f})")
+        
+        prompt = PromptTemplate(
+            input_variables=["article_text"],
+            template=prompt_template
+        )
+        
+        chain = LLMChain(
+            llm=llm,
+            prompt=prompt,
+            output_parser=SummaryOutputParser()
+        )
+        
+        return chain
+        
+    except Exception as e:
+        logger.error(f"Error creating intent-aware summarization chain: {str(e)}")
+        return None
+
+def summarize_article_with_intent(article_text: str, title: str = "Unknown", intent: str = "General", confidence: float = 0.5) -> dict:
+    """
+    Summarize an article using intent-aware prompting
+    
+    Args:
+        article_text: The article content to summarize
+        title: Article title for context
+        intent: Detected intent category
+        confidence: Confidence score of intent prediction
+        
+    Returns:
+        Dictionary with summary, method used, and metadata
+    """
+    if not article_text or not article_text.strip():
+        return {
+            'summary': "No content available to summarize.",
+            'method': 'error',
+            'intent': intent,
+            'confidence': confidence
+        }
+    
+    # Check if content is too short to need summarization
+    if len(article_text.split()) < 50:
+        return {
+            'summary': article_text,
+            'method': 'content_too_short',
+            'intent': intent,
+            'confidence': confidence
+        }
+    
+    # Try intent-aware OpenAI summarization first
+    if LANGCHAIN_AVAILABLE:
+        api_key = get_openai_api_key()
+        if api_key:
+            try:
+                # Estimate tokens
+                estimated_tokens = estimate_tokens(article_text)
+                logger.info(f"Article estimated tokens: {estimated_tokens}")
+                
+                if estimated_tokens > 12000:  # Leave room for prompt and response
+                    # Handle long articles with chunking
+                    chunks = chunk_text_for_openai(article_text, max_chunk_tokens=10000)
+                    logger.info(f"Article too long ({estimated_tokens} tokens), splitting into {len(chunks)} chunks")
+                    
+                    summaries = []
+                    chain = create_intent_aware_chain(intent, confidence)
+                    if chain:
+                        for i, chunk in enumerate(chunks[:2]):  # Limit to first 2 chunks
+                            try:
+                                log_chatgpt_request(chain.prompt.template, chunk, i+1)
+                                chunk_summary = chain.run(article_text=chunk)
+                                summaries.append(chunk_summary)
+                                logger.info(f"✅ Chunk {i+1} summarized successfully")
+                            except Exception as e:
+                                logger.error(f"Error summarizing chunk {i+1}: {str(e)}")
+                                continue
+                        
+                        if summaries:
+                            combined_summary = " ".join(summaries)
+                            return {
+                                'summary': combined_summary,
+                                'method': f'intent_aware_chunked_openai_{intent.lower()}',
+                                'intent': intent,
+                                'confidence': confidence,
+                                'chunks_processed': len(summaries)
+                            }
+                else:
+                    # Handle normal-sized articles
+                    chain = create_intent_aware_chain(intent, confidence)
+                    if chain:
+                        log_chatgpt_request(chain.prompt.template, article_text)
+                        summary = chain.run(article_text=article_text)
+                        logger.info("✅ Intent-aware OpenAI summarization completed successfully")
+                        return {
+                            'summary': summary,
+                            'method': f'intent_aware_openai_{intent.lower()}',
+                            'intent': intent,
+                            'confidence': confidence
+                        }
+                        
+            except Exception as e:
+                logger.error(f"Error in intent-aware OpenAI summarization: {str(e)}")
+    
+    # Fallback to regular summarization
+    logger.info("Falling back to regular summarization")
+    regular_result = summarize_article_with_limit(article_text, title)
+    if isinstance(regular_result, dict):
+        regular_result['intent'] = intent
+        regular_result['confidence'] = confidence
+        return regular_result
+    else:
+        return {
+            'summary': regular_result,
+            'method': 'fallback_basic',
+            'intent': intent,
+            'confidence': confidence
+        }
+
 def get_summarization_status() -> dict:
     """Get the status of summarization capabilities"""
     return {

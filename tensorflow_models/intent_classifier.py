@@ -90,6 +90,16 @@ class IntentClassifier:
             ("Evolution by natural selection", "Science"),
             ("Solar system formation", "Science"),
             ("Electromagnetic wave properties", "Science"),
+            ("Explain quantum physics concepts", "Science"),
+            ("What is thermodynamics?", "Science"),
+            ("Nuclear fusion process", "Science"),
+            ("Particle physics experiments", "Science"),
+            ("Biochemistry reactions", "Science"),
+            ("Molecular biology research", "Science"),
+            ("Physics laws and principles", "Science"),
+            ("Scientific method explanation", "Science"),
+            ("Chemistry periodic table", "Science"),
+            ("Biology cell structures", "Science"),
             
             # Biography
             ("Albert Einstein biography and discoveries", "Biography"),
