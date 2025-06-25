@@ -175,40 +175,41 @@ def enhance_query_with_intent(query: str, intent: str, confidence: float) -> str
     """
     # Only enhance if we have high confidence in the intent
     if confidence < 0.4:
+        logger.info(f"🚫 Not enhancing query - confidence {confidence:.3f} below threshold 0.4")
         return query
     
     # Intent-based query enhancement patterns
     intent_enhancements = {
         'Science': {
-            'keywords': ['scientific', 'theory', 'principle', 'mechanism', 'process'],
-            'suffixes': ['science', 'physics', 'chemistry', 'biology']
+            'keywords': ['quantum', 'physics', 'chemistry', 'biology', 'scientific', 'theory', 'principle'],
+            'suffixes': ['theory', 'principles']  # More specific than just 'science'
         },
         'History': {
-            'keywords': ['historical', 'timeline', 'events', 'period'],
-            'suffixes': ['history', 'timeline', 'events']
+            'keywords': ['war', 'battle', 'historical', 'timeline', 'events', 'period', 'ancient'],
+            'suffixes': ['history', 'timeline']
         },
         'Biography': {
-            'keywords': ['biography', 'life', 'achievements', 'career'],
+            'keywords': ['biography', 'life', 'who was', 'born', 'died', 'achievements'],
             'suffixes': ['biography', 'life']
         },
         'Technology': {
-            'keywords': ['technology', 'innovation', 'development', 'advancement'],
+            'keywords': ['technology', 'innovation', 'development', 'advancement', 'computer', 'software'],
             'suffixes': ['technology', 'innovation']
         },
         'Sports': {
-            'keywords': ['sports', 'game', 'competition', 'tournament'],
+            'keywords': ['sports', 'game', 'competition', 'tournament', 'olympics', 'team'],
             'suffixes': ['sports', 'game']
         },
         'Arts': {
-            'keywords': ['art', 'artistic', 'cultural', 'creative'],
+            'keywords': ['art', 'artistic', 'cultural', 'creative', 'painting', 'music'],
             'suffixes': ['art', 'culture']
         },
         'Politics': {
-            'keywords': ['political', 'government', 'policy'],
+            'keywords': ['political', 'government', 'policy', 'democracy', 'election'],
             'suffixes': ['politics', 'government']
         },
         'Geography': {
-            'keywords': ['geographic', 'location', 'region'],
+            'keywords': ['geographic', 'location', 'region', 'country', 'city', 'mountain'],
             'suffixes': ['geography', 'location']
         }
     }
@@ -220,11 +221,22 @@ def enhance_query_with_intent(query: str, intent: str, confidence: float) -> str
         query_lower = query.lower()
         has_intent_keywords = any(keyword in query_lower for keyword in enhancement['keywords'])
         
+        # For Science: be extra careful with specific terms
+        if intent == 'Science':
+            # Don't enhance if already contains specific science terms
+            specific_science_terms = ['quantum', 'physics', 'chemistry', 'biology', 'mechanics', 'thermodynamics']
+            if any(term in query_lower for term in specific_science_terms):
+                logger.info(f"🧪 Science query already contains specific terms - not enhancing: '{query}'")
+                return query
+        
+        # Only enhance if doesn't already have intent keywords
         if not has_intent_keywords:
-            # Add the most relevant suffix
+            # Use the most relevant suffix
             enhanced_query = f"{query} {enhancement['suffixes'][0]}"
-            logger.info(f"Enhanced query with intent '{intent}': '{query}' -> '{enhanced_query}'")
+            logger.info(f"✨ Enhanced query with intent '{intent}': '{query}' -> '{enhanced_query}'")
             return enhanced_query
+        else:
+            logger.info(f"✅ Query already contains {intent.lower()} keywords - not enhancing: '{query}'")
     
     return query
 
@@ -239,17 +251,37 @@ def search_and_fetch_article_info(query: str, max_results: int = 1) -> Optional[
         # Preprocess historical queries
         processed_query, was_converted = preprocess_historical_query(query)
         
+        # Log the exact search parameters being sent to Wikipedia
+        logger.info("=" * 80)
+        logger.info("🔍 WIKIPEDIA API SEARCH REQUEST")
+        logger.info("=" * 80)
+        logger.info(f"📝 Original query: '{query}'")
+        logger.info(f"📝 Processed query: '{processed_query}'")
+        logger.info(f"🔄 Query was converted: {was_converted}")
+        logger.info(f"📊 Max results requested: {max_results + 2}")
+        logger.info(f"🌐 Wikipedia search API call: wikipedia.search('{processed_query}', results={max_results + 2})")
+        
         # Use wikipedia library for better search functionality
         search_results = wikipedia.search(processed_query, results=max_results + 2)
         
+        logger.info(f"✅ Wikipedia API returned {len(search_results)} search results:")
+        for i, result in enumerate(search_results):
+            logger.info(f"   {i+1}. '{result}'")
+        
         for result in search_results:
             try:
+                logger.info(f"🔄 Attempting to fetch page: '{result}'")
+                logger.info(f"🌐 Wikipedia page API call: wikipedia.page('{result}')")
+                
                 page = wikipedia.page(result)
-                logger.info(f"Found and fetched article: {result}")
+                
+                logger.info(f"✅ Successfully fetched page!")
+                logger.info(f"📄 Found and fetched article: {result}")
                 logger.info(f"🔗 Search result URL: {page.url}")
                 logger.info(f"📝 Search result page title: {page.title}")
                 content_preview = page.content[:500] + "..." if len(page.content) > 500 else page.content
                 logger.info(f"📄 Search result content starts with: {content_preview}")
+                logger.info("=" * 80)
                 
                 return {
                     'content': page.content,
@@ -259,23 +291,34 @@ def search_and_fetch_article_info(query: str, max_results: int = 1) -> Optional[
                 }
             except wikipedia.exceptions.DisambiguationError as e:
                 # Handle disambiguation pages by taking the first option
+                logger.info(f"⚠️  Disambiguation page encountered for '{result}'")
+                logger.info(f"📋 Available options: {e.options[:5]}...")  # Show first 5 options
                 try:
+                    logger.info(f"🔄 Trying first disambiguation option: '{e.options[0]}'")
+                    logger.info(f"🌐 Wikipedia page API call: wikipedia.page('{e.options[0]}')")
+                    
                     page = wikipedia.page(e.options[0])
-                    logger.info(f"Resolved disambiguation to: {e.options[0]}")
+                    logger.info(f"✅ Resolved disambiguation to: {e.options[0]}")
+                    logger.info("=" * 80)
+                    
                     return {
                         'content': page.content,
                         'title': page.title,
                         'url': page.url,
                         'summary': page.summary
                     }
-                except Exception:
+                except Exception as disambiguation_error:
+                    logger.error(f"❌ Failed to resolve disambiguation: {str(disambiguation_error)}")
                     continue
-            except Exception:
+            except Exception as page_error:
+                logger.error(f"❌ Error fetching page '{result}': {str(page_error)}")
                 continue
         
-        logger.warning(f"No suitable article found for query: {query}")
+        logger.warning(f"❌ No suitable article found for query: '{query}'")
+        logger.info("=" * 80)
         return None
         
     except Exception as e:
-        logger.error(f"Error searching for article '{query}': {str(e)}")
+        logger.error(f"❌ Error searching for article '{query}': {str(e)}")
+        logger.info("=" * 80)
         return None
