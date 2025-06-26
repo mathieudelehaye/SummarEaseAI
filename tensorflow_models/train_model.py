@@ -34,7 +34,7 @@ def setup_gpu():
         print(f"✅ {gpu_count} GPU(s) detected!")
         for i, gpu in enumerate(gpus):
             print(f"   GPU {i}: {gpu.name}")
-        
+    
         try:
             # Enable GPU memory growth to prevent allocation issues
             for gpu in gpus:
@@ -190,7 +190,7 @@ def main():
     print("\n🧠 Starting model training...")
     success = classifier.train_model(texts, labels, epochs=20)
     if success:
-        print("Training completed!")
+    print("Training completed!")
     else:
         print("❌ Training failed!")
         return

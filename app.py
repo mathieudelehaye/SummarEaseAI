@@ -122,7 +122,12 @@ def compare_models(text):
 def summarize_article(topic, max_lines=30, use_intent=True, model_type='openai'):
     """Summarize Wikipedia article using specified method"""
     try:
-        endpoint = '/summarize' if model_type == 'openai' else '/summarize_local'
+        if model_type == 'openai':
+            endpoint = '/summarize'
+        elif model_type == 'multi_source':
+            endpoint = '/summarize_multi_source'
+        else:
+            endpoint = '/summarize_local'
         payload = {
             'query': topic,  # Changed from 'topic' to 'query' to match backend
             'max_lines': max_lines,
@@ -252,8 +257,8 @@ def main():
         with col2:
             local_summary_model = st.selectbox(
                 "AI Model:",
-                ["OpenAI + LangChain", "🤗 BART (Local)", "🤗 T5 (Local)"],
-                help="Choose between cloud or local AI models"
+                ["OpenAI + LangChain", "🤖 Multi-Source Agent", "🤗 BART (Local)", "🤗 T5 (Local)"],
+                help="Choose between cloud, multi-source agent, or local AI models"
             )
         
         # Input form
@@ -269,9 +274,20 @@ def main():
         
         if submit_button and topic:
             # Determine model type
-            model_type = 'openai' if 'OpenAI' in local_summary_model else 'huggingface'
+            if 'OpenAI' in local_summary_model:
+                model_type = 'openai'
+            elif 'Multi-Source' in local_summary_model:
+                model_type = 'multi_source'
+            else:
+                model_type = 'huggingface'
             
-            with st.spinner(f"🤖 {'OpenAI' if model_type == 'openai' else '🤗 Hugging Face'} is working on your request..."):
+            spinner_text = {
+                'openai': '🤖 OpenAI',
+                'multi_source': '🤖 Multi-Source Agent',
+                'huggingface': '🤗 Hugging Face'
+            }.get(model_type, '🤖 AI')
+            
+            with st.spinner(f"{spinner_text} is working on your request..."):
                 progress_bar = st.progress(0)
                 for i in range(100):
                     time.sleep(0.01)

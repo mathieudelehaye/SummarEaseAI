@@ -26,26 +26,26 @@ except:
 
 # Import Hugging Face modules only if not in DirectML mode
 if not DIRECTML_MODE:
-    try:
-        from backend.hf_summarizer import get_hf_summarizer, summarize_with_huggingface
-        HF_SUMMARIZER_AVAILABLE = True
-    except ImportError as e:
-        logging.warning(f"Hugging Face summarizer not available: {e}")
-        HF_SUMMARIZER_AVAILABLE = False
-    
-    try:
-        from tensorflow_models.bert_intent_classifier import get_bert_intent_classifier, predict_intent_with_bert
-        HF_BERT_AVAILABLE = True
-    except ImportError as e:
-        logging.warning(f"BERT classifier not available: {e}")
-        HF_BERT_AVAILABLE = False
-    
-    try:
-        from utils.semantic_search import semantic_search_wikipedia, get_semantic_search
-        HF_SEMANTIC_AVAILABLE = True
-    except ImportError as e:
-        logging.warning(f"Semantic search not available: {e}")
-        HF_SEMANTIC_AVAILABLE = False
+try:
+    from backend.hf_summarizer import get_hf_summarizer, summarize_with_huggingface
+    HF_SUMMARIZER_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Hugging Face summarizer not available: {e}")
+    HF_SUMMARIZER_AVAILABLE = False
+
+try:
+    from tensorflow_models.bert_intent_classifier import get_bert_intent_classifier, predict_intent_with_bert
+    HF_BERT_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"BERT classifier not available: {e}")
+    HF_BERT_AVAILABLE = False
+
+try:
+    from utils.semantic_search import semantic_search_wikipedia, get_semantic_search
+    HF_SEMANTIC_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Semantic search not available: {e}")
+    HF_SEMANTIC_AVAILABLE = False
 else:
     # DirectML mode - disable all Hugging Face features
     HF_SUMMARIZER_AVAILABLE = False

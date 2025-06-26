@@ -131,7 +131,7 @@ def status():
             'wikipedia_fetching': True,
             'huggingface_features': False
         },
-        'endpoints': ['/status', '/summarize', '/predict_intent', '/search_wikipedia', '/summarize_agentic']
+        'endpoints': ['/status', '/summarize', '/predict_intent', '/search_wikipedia', '/summarize_agentic', '/summarize_multi_source']
     })
 
 @app.route('/health')
@@ -470,6 +470,84 @@ def classify_intent_keywords(text):
         confidence = 0.5
     
     return best_intent, confidence
+
+@app.route('/summarize_multi_source', methods=['POST'])
+def summarize_multi_source():
+    """Multi-source summarization with article synthesis"""
+    try:
+        data = request.json
+        if not data or 'query' not in data:
+            return jsonify({'error': 'Missing query parameter'}), 400
+        
+        query = data['query'].strip()
+        if not query:
+            return jsonify({'error': 'Empty query provided'}), 400
+        
+        logger.info(f"Multi-source summarization request: '{query}'")
+        
+        # Import here to avoid circular imports
+        from utils.multi_source_agent import MultiSourceAgent
+        
+        # Run multi-source agent
+        agent = MultiSourceAgent()
+        result = agent.run_multi_source_search(query)
+        
+        if 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        
+        logger.info(f"Multi-source summarization completed: {result.get('synthesis_method', 'unknown')}")
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error in multi-source summarization: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/summarize_with_agents', methods=['POST'])
+def summarize_with_agents():
+    """Enhanced multi-source summarization using real LangChain agents with cost control"""
+    try:
+        data = request.json
+        if not data or 'query' not in data:
+            return jsonify({'error': 'Missing query parameter'}), 400
+        
+        query = data['query'].strip()
+        if not query:
+            return jsonify({'error': 'Empty query provided'}), 400
+        
+        # Cost control parameters
+        max_articles = data.get('max_articles', None)  # None = use mode default
+        cost_mode = data.get('cost_mode', 'BALANCED')  # MINIMAL, BALANCED, COMPREHENSIVE
+        
+        logger.info(f"🤖 Agent-powered summarization request: '{query}'")
+        logger.info(f"💰 Cost control: mode={cost_mode}, max_articles={max_articles}")
+        
+        # Import here to avoid circular imports
+        from utils.multi_source_agent import MultiSourceAgent
+        
+        # Initialize agent with cost control
+        agent = MultiSourceAgent(cost_mode=cost_mode)
+        
+        # Run agent-powered multi-source search
+        result = agent.run_multi_source_search_with_agents(query, max_articles)
+        
+        if 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        
+        # Log comprehensive results
+        logger.info(f"✅ Agent-powered summarization completed:")
+        logger.info(f"   📄 Articles: {len(result.get('summaries', []))}")
+        logger.info(f"   💰 OpenAI calls: {result.get('cost_tracking', {}).get('openai_calls', 0)}")
+        logger.info(f"   📚 Wikipedia calls: {result.get('cost_tracking', {}).get('wikipedia_calls', 0)}")
+        logger.info(f"   📋 Pages used: {result.get('wikipedia_pages_used', [])}")
+        
+        if result.get('openai_secondary_queries'):
+            logger.info(f"   📡 OpenAI secondary queries: {result['openai_secondary_queries']}")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"❌ Error in agent-powered summarization: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting SummarEaseAI Simple Backend")
