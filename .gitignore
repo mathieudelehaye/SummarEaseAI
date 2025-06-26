@@ -194,3 +194,13 @@ cython_debug/
 .cursorindexingignore
 
 *.code-workspace
+
+*.csv
+*.png
+*.json
+
+# TensorFlow and ML models
+*.h5
+*.pickle
+tensorflow_models/saved_model/
+*.pkl
