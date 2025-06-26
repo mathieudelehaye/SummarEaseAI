@@ -98,10 +98,7 @@ HTML_TEMPLATE = """
             <code>{"query": "search term"}</code>
         </div>
 
-        <div class="endpoint">
-            <strong>POST /summarize_enhanced</strong> - Enhanced summarization with intent detection and targeted search<br>
-            <code>{"query": "your search query"}</code>
-        </div>
+
 
         <div class="endpoint">
             <strong>POST /summarize_agentic</strong> - Agentic summarization with OpenAI query optimization and page selection<br>
@@ -134,7 +131,7 @@ def status():
             'wikipedia_fetching': True,
             'huggingface_features': False
         },
-        'endpoints': ['/status', '/summarize', '/predict_intent', '/search_wikipedia', '/summarize_enhanced', '/summarize_agentic']
+        'endpoints': ['/status', '/summarize', '/predict_intent', '/search_wikipedia', '/summarize_agentic']
     })
 
 @app.route('/health')
@@ -147,58 +144,7 @@ def health():
         'tensorflow_model': tf_model_loaded
     })
 
-@app.route('/summarize', methods=['POST'])
-def summarize():
-    """Summarize a Wikipedia article"""
-    try:
-        data = request.json
-        if not data or 'query' not in data:
-            return jsonify({'error': 'Missing query parameter'}), 400
-        
-        query = data['query'].strip()
-        if not query:
-            return jsonify({'error': 'Empty query provided'}), 400
-        
-        logger.info(f"Summarization request: '{query}'")
-        
-        # Fetch Wikipedia article
-        article_info = search_and_fetch_article_info(query)
-        if not article_info or 'content' not in article_info:
-            return jsonify({'error': 'Could not fetch Wikipedia article'}), 404
-        
-        # Summarize the article
-        summary_text = summarize_article_with_limit(
-            article_info['content'], 
-            max_lines=30  # Default line limit
-        )
-        
-        # Check if summarization failed
-        if summary_text.startswith("Error"):
-            return jsonify({'error': summary_text}), 500
-        
-        response = {
-            'query': query,
-            'topic': query,  # For frontend compatibility
-            'title': article_info.get('title', 'Unknown'),
-            'url': article_info.get('url', ''),
-            'summary': summary_text,
-            'method': 'OpenAI + LangChain (Line Limited)',
-            'summarization_method': 'OpenAI + LangChain (Line Limited)',  # For frontend compatibility
-            'article_length': len(article_info['content']),
-            'summary_length': len(summary_text),
-            'max_lines': 30,
-            'word_count': {
-                'original': len(article_info['content'].split()),
-                'summary': len(summary_text.split())
-            }
-        }
-        
-        logger.info(f"Summarization completed: {response['method']}")
-        return jsonify(response)
-        
-    except Exception as e:
-        logger.error(f"Error in summarization: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+
 
 @app.route('/predict_intent', methods=['POST'])
 def predict_intent():
@@ -279,9 +225,9 @@ def search_wikipedia():
         logger.error(f"Error in Wikipedia search: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
-@app.route('/summarize_enhanced', methods=['POST'])
-def summarize_enhanced():
-    """Enhanced summarization with intent detection and targeted search"""
+@app.route('/summarize', methods=['POST'])
+def summarize():
+    """Summarize Wikipedia articles with intent detection and targeted search"""
     try:
         data = request.json
         if not data or 'query' not in data:
@@ -291,7 +237,7 @@ def summarize_enhanced():
         if not query:
             return jsonify({'error': 'Empty query provided'}), 400
         
-        logger.info(f"Enhanced summarization request: '{query}'")
+        logger.info(f"Summarization request: '{query}'")
         
         # Step 1: Predict intent
         keyword_intent, keyword_confidence = classify_intent_keywords(query)
@@ -357,7 +303,7 @@ def summarize_enhanced():
             }
         }
         
-        logger.info(f"Enhanced summarization completed: {summary_result['method']}")
+        logger.info(f"Summarization completed: {summary_result['method']}")
         return jsonify(response)
         
     except Exception as e:

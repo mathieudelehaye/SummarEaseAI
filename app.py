@@ -122,7 +122,7 @@ def compare_models(text):
 def summarize_article(topic, max_lines=30, use_intent=True, model_type='openai'):
     """Summarize Wikipedia article using specified method"""
     try:
-        endpoint = '/summarize_enhanced' if model_type == 'openai' else '/summarize_local'
+        endpoint = '/summarize' if model_type == 'openai' else '/summarize_local'
         payload = {
             'query': topic,  # Changed from 'topic' to 'query' to match backend
             'max_lines': max_lines,
