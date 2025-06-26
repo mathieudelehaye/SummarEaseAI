@@ -382,7 +382,8 @@ def search_and_fetch_article_agentic_simple(query: str, max_results: int = 3) ->
         logger.info(f"🌐 Wikipedia page API call: wikipedia.page('{selected_page}')")
         
         try:
-            page = wikipedia.page(selected_page)
+            # FIX: Use auto_suggest=False to prevent Apollo 11 → Apollo 1 bug
+            page = wikipedia.page(selected_page, auto_suggest=False)
             
             logger.info(f"✅ Successfully fetched page!")
             logger.info(f"📄 Page title: {page.title}")
@@ -413,7 +414,7 @@ def search_and_fetch_article_agentic_simple(query: str, max_results: int = 3) ->
             logger.info(f"🌐 Wikipedia page API call: wikipedia.page('{best_option}')")
             
             try:
-                page = wikipedia.page(best_option)
+                page = wikipedia.page(best_option, auto_suggest=False)
                 logger.info(f"✅ Resolved disambiguation to: {best_option}")
                 logger.info("=" * 80)
                 
@@ -448,7 +449,7 @@ def search_and_fetch_article_agentic_simple(query: str, max_results: int = 3) ->
                 try:
                     logger.info(f"🔄 Trying alternative page: '{alt_page}'")
                     logger.info(f"🌐 Wikipedia page API call: wikipedia.page('{alt_page}')")
-                    page = wikipedia.page(alt_page)
+                    page = wikipedia.page(alt_page, auto_suggest=False)
                     
                     logger.info(f"✅ Successfully fetched alternative page!")
                     logger.info(f"📄 Page title: {page.title}")
@@ -476,7 +477,7 @@ def search_and_fetch_article_agentic_simple(query: str, max_results: int = 3) ->
                     fallback_page = search_results[1]
                     logger.info(f"🔄 Trying fallback to second result: '{fallback_page}'")
                     logger.info(f"🌐 Wikipedia page API call: wikipedia.page('{fallback_page}')")
-                    page = wikipedia.page(fallback_page)
+                    page = wikipedia.page(fallback_page, auto_suggest=False)
                     
                     logger.info(f"✅ Successfully fetched fallback page!")
                     logger.info(f"📄 Page title: {page.title}")
