@@ -497,7 +497,18 @@ class WikipediaAgentSystem:
         
         # Step 4: Get the selected article content
         try:
-            selected_page = wikipedia.page(selected_title)
+            # Try to get the page with auto-suggest disabled first
+            try:
+                selected_page = wikipedia.page(selected_title, auto_suggest=False)
+            except wikipedia.exceptions.DisambiguationError as e:
+                # If disambiguation, pick the first option
+                logger.info(f"📝 Disambiguation page, selecting first option: {e.options[0]}")
+                selected_page = wikipedia.page(e.options[0], auto_suggest=False)
+            except (wikipedia.exceptions.PageError, Exception):
+                # If exact match fails, try with auto-suggest enabled
+                logger.info(f"⚠️ Exact match failed, trying with auto-suggest for: '{selected_title}'")
+                selected_page = wikipedia.page(selected_title, auto_suggest=True)
+            
             article_info = {
                 'title': selected_page.title,
                 'url': selected_page.url,
@@ -507,7 +518,23 @@ class WikipediaAgentSystem:
             logger.info(f"✅ Successfully retrieved article: '{selected_page.title}'")
         except Exception as e:
             logger.error(f"❌ Failed to get selected article: {str(e)}")
-            article_info = {'error': f'Failed to get article: {str(e)}'}
+            # Try fallback to first search result
+            if search_results:
+                try:
+                    logger.info(f"🔄 Trying fallback to first search result: '{search_results[0]}'")
+                    fallback_page = wikipedia.page(search_results[0], auto_suggest=False)
+                    article_info = {
+                        'title': fallback_page.title,
+                        'url': fallback_page.url,
+                        'content': fallback_page.content,
+                        'summary': fallback_page.summary
+                    }
+                    logger.info(f"✅ Fallback successful: '{fallback_page.title}'")
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fallback also failed: {str(fallback_error)}")
+                    article_info = {'error': f'All attempts failed: {str(e)}'}
+            else:
+                article_info = {'error': f'Failed to get article: {str(e)}'}
         
         # Compile comprehensive result
         result = {
