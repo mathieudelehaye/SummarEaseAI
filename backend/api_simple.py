@@ -167,20 +167,29 @@ def summarize():
             return jsonify({'error': 'Could not fetch Wikipedia article'}), 404
         
         # Summarize the article
-        summary_result = summarize_article_with_limit(
+        summary_text = summarize_article_with_limit(
             article_info['content'], 
-            article_info.get('title', 'Unknown')
+            max_lines=30  # Default line limit
         )
+        
+        # Check if summarization failed
+        if summary_text.startswith("Error"):
+            return jsonify({'error': summary_text}), 500
         
         response = {
             'query': query,
+            'topic': query,  # For frontend compatibility
             'title': article_info.get('title', 'Unknown'),
             'url': article_info.get('url', ''),
-            'summary': summary_result['summary'],
-            'method': summary_result['method'],
+            'summary': summary_text,
+            'method': 'OpenAI + LangChain (Line Limited)',
+            'summarization_method': 'OpenAI + LangChain (Line Limited)',  # For frontend compatibility
+            'article_length': len(article_info['content']),
+            'summary_length': len(summary_text),
+            'max_lines': 30,
             'word_count': {
                 'original': len(article_info['content'].split()),
-                'summary': len(summary_result['summary'].split())
+                'summary': len(summary_text.split())
             }
         }
         

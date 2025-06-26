@@ -124,7 +124,7 @@ def summarize_article(topic, max_lines=30, use_intent=True, model_type='openai')
     try:
         endpoint = '/summarize' if model_type == 'openai' else '/summarize_local'
         payload = {
-            'topic': topic,
+            'query': topic,  # Changed from 'topic' to 'query' to match backend
             'max_lines': max_lines,
             'use_intent': use_intent
         }
@@ -289,7 +289,7 @@ def main():
                 
                 with col1:
                     st.subheader("📄 Summary")
-                    st.markdown(f"**Topic:** {result['topic']}")
+                    st.markdown(f"**Topic:** {result.get('topic', result.get('query', 'Unknown'))}")
                     
                     # Show model used
                     method = result.get('summarization_method', 'Unknown')
@@ -317,8 +317,10 @@ def main():
                             st.metric("Article Length", f"{result.get('article_length', 0):,} chars")
                         with col_b:
                             st.metric("Summary Length", f"{result.get('summary_length', 0):,} chars")
-                            if result.get('article_length', 0) > 0:
-                                compression = (1 - result.get('summary_length', 0) / result.get('article_length', 1)) * 100
+                            article_len = int(result.get('article_length', 0))
+                            summary_len = int(result.get('summary_length', 0))
+                            if article_len > 0:
+                                compression = (1 - summary_len / article_len) * 100
                                 st.metric("Compression", f"{compression:.1f}%")
             else:
                 st.error(f"❌ {result.get('error', 'Unknown error occurred')}")
