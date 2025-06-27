@@ -495,8 +495,28 @@ def summarize_multi_source():
         if 'error' in result:
             return jsonify({'error': result['error']}), 500
         
+        # Map multi-source agent response to frontend-expected format
+        frontend_result = {
+            'query': result.get('query', query),
+            'summary': result.get('final_synthesis', 'No summary available'),
+            'title': f"Multi-Source Analysis: {query}",
+            'method': 'multi_source_agent',
+            'intent': result.get('intent', 'Unknown'),
+            'confidence': result.get('confidence', 0.0),
+            'articles_found': result.get('total_articles_found', 0),
+            'articles_summarized': result.get('articles_summarized', 0),
+            'agent_powered': result.get('agent_powered', True),
+            'cost_mode': result.get('cost_mode', 'BALANCED'),
+            'wikipedia_pages_used': result.get('wikipedia_pages_used', []),
+            'agents_used': result.get('agents_used', []),
+            'cost_tracking': result.get('cost_tracking', {}),
+            
+            # Include raw multi-source data for debugging
+            'multi_source_data': result
+        }
+        
         logger.info(f"Multi-source summarization completed: {result.get('synthesis_method', 'unknown')}")
-        return jsonify(result)
+        return jsonify(frontend_result)
         
     except Exception as e:
         logger.error(f"Error in multi-source summarization: {str(e)}")

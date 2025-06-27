@@ -142,6 +142,7 @@ def summarize_article(topic, max_lines=30, use_intent=True, model_type='openai')
             json=payload,
             timeout=60  # Increased timeout for local models
         )
+        
         return response.json(), response.status_code
     except Exception as e:
         return {'error': f"Request failed: {str(e)}"}, 500
