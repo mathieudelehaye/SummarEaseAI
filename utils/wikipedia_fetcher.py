@@ -36,6 +36,23 @@ def preprocess_historical_query(query: str) -> tuple[str, bool]:
     
     return query, False
 
+def sanitize_wikipedia_content(content: str) -> str:
+    """
+    Sanitize Wikipedia content to prevent format string errors
+    Removes or replaces characters that could cause issues with LangChain templates
+    """
+    if not content:
+        return ""
+    
+    # Replace curly braces that could cause format code errors
+    sanitized = str(content).replace('{', '(').replace('}', ')')
+    
+    # Log if we made changes
+    if '{' in content or '}' in content:
+        logger.info(f"🔧 Sanitized Wikipedia content: removed {content.count('{')} opening and {content.count('}')} closing curly braces")
+    
+    return sanitized
+
 def fetch_article(topic: str) -> Optional[str]:
     """
     Fetch Wikipedia article content by topic/title
@@ -54,9 +71,14 @@ def fetch_article(topic: str) -> Optional[str]:
             logger.info(f"Successfully fetched article: {processed_topic}")
             logger.info(f"🔗 Article URL: https://en.wikipedia.org/wiki/{processed_topic.replace(' ', '_')}")
             logger.info(f"📝 Article title from Wikipedia: {page.title}")
-            article_preview = page.text[:500] + "..." if len(page.text) > 500 else page.text
+            
+            # Sanitize content before returning
+            raw_content = page.text
+            sanitized_content = sanitize_wikipedia_content(raw_content)
+            
+            article_preview = sanitized_content[:500] + "..." if len(sanitized_content) > 500 else sanitized_content
             logger.info(f"📄 Article content starts with: {article_preview}")
-            return page.text
+            return sanitized_content
         else:
             # Try searching for the topic if direct page doesn't exist
             logger.info(f"Direct page not found for '{processed_topic}', trying search...")
@@ -82,15 +104,21 @@ def search_and_fetch_article(query: str, max_results: int = 1) -> Optional[str]:
                 logger.info(f"Found and fetched article: {result}")
                 logger.info(f"🔗 Search result URL: https://en.wikipedia.org/wiki/{result.replace(' ', '_')}")
                 logger.info(f"📝 Search result page title: {page.title}")
-                content_preview = page.content[:500] + "..." if len(page.content) > 500 else page.content
+                
+                # Sanitize content before returning
+                raw_content = page.content
+                sanitized_content = sanitize_wikipedia_content(raw_content)
+                
+                content_preview = sanitized_content[:500] + "..." if len(sanitized_content) > 500 else sanitized_content
                 logger.info(f"📄 Search result content starts with: {content_preview}")
-                return page.content
+                return sanitized_content
             except wikipedia.exceptions.DisambiguationError as e:
                 # Handle disambiguation pages by taking the first option
                 try:
                     page = wikipedia.page(e.options[0])
                     logger.info(f"Resolved disambiguation to: {e.options[0]}")
-                    return page.content
+                    # Sanitize content before returning
+                    return sanitize_wikipedia_content(page.content)
                 except Exception:
                     continue
             except Exception:
@@ -283,8 +311,11 @@ def search_and_fetch_article_info(query: str, max_results: int = 1) -> Optional[
                 logger.info(f"📄 Search result content starts with: {content_preview}")
                 logger.info("=" * 80)
                 
+                # Sanitize content before returning
+                sanitized_content = sanitize_wikipedia_content(page.content)
+                
                 return {
-                    'content': page.content,
+                    'content': sanitized_content,
                     'title': page.title,
                     'url': page.url,
                     'summary': page.summary
@@ -301,8 +332,11 @@ def search_and_fetch_article_info(query: str, max_results: int = 1) -> Optional[
                     logger.info(f"✅ Resolved disambiguation to: {e.options[0]}")
                     logger.info("=" * 80)
                     
+                    # Sanitize content before returning
+                    sanitized_content = sanitize_wikipedia_content(page.content)
+                    
                     return {
-                        'content': page.content,
+                        'content': sanitized_content,
                         'title': page.title,
                         'url': page.url,
                         'summary': page.summary
@@ -392,8 +426,11 @@ def search_and_fetch_article_agentic_simple(query: str, max_results: int = 3) ->
             logger.info(f"📄 Content preview: {content_preview}")
             logger.info("=" * 80)
             
+            # Sanitize content before returning
+            sanitized_content = sanitize_wikipedia_content(page.content)
+            
             return {
-                'content': page.content,
+                'content': sanitized_content,
                 'title': page.title,
                 'url': page.url,
                 'summary': page.summary,
@@ -418,8 +455,11 @@ def search_and_fetch_article_agentic_simple(query: str, max_results: int = 3) ->
                 logger.info(f"✅ Resolved disambiguation to: {best_option}")
                 logger.info("=" * 80)
                 
+                # Sanitize content before returning
+                sanitized_content = sanitize_wikipedia_content(page.content)
+                
                 return {
-                    'content': page.content,
+                    'content': sanitized_content,
                     'title': page.title,
                     'url': page.url,
                     'summary': page.summary,

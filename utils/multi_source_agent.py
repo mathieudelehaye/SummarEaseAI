@@ -423,7 +423,8 @@ class MultiSourceAgent:
         
         # Generate synthesis
         result = synthesis_method(articles, original_query)
-        result['synthesis_method'] = f"multi_source_{strategy['synthesis_focus']}"
+        synthesis_focus = str(strategy.get('synthesis_focus', 'general')).replace('{', '').replace('}', '')
+        result['synthesis_method'] = f"multi_source_{synthesis_focus}"
         result['articles_used'] = [article['title'] for article in articles]
         result['article_count'] = len(articles)
         
@@ -433,17 +434,20 @@ class MultiSourceAgent:
         """Create comprehensive synthesis (good for complex topics like The Beatles)."""
         
         # Combine article contents with structure
-        combined_content = f"# Comprehensive Information about: {query}\n\n"
+        safe_query = str(query).replace('{', '').replace('}', '')
+        combined_content = f"# Comprehensive Information about: {safe_query}\n\n"
         
         for i, article in enumerate(articles):
-            combined_content += f"## Source {i+1}: {article['title']}\n"
+            safe_title = str(article.get('title', 'Unknown')).replace('{', '').replace('}', '')
+            combined_content += f"## Source {i+1}: {safe_title}\n"
             combined_content += f"Relevance: {article['relevance_score']:.2f}\n"
             combined_content += f"Content: {article['content'][:2000]}...\n\n"  # Limit to avoid token limits
         
         # Use enhanced summarization with multi-source awareness
+        safe_query_title = str(query).replace('{', '').replace('}', '')
         summary = summarize_article_with_intent(
             combined_content,
-            f"Comprehensive overview of {query}",
+            f"Comprehensive overview of {safe_query_title}",
             "comprehensive",
             0.9
         )
@@ -533,7 +537,7 @@ Requirements:
 - Include the most important and relevant information from all sources
 
 Articles to synthesize:
-{combined_content}
+{{combined_content}}
 
 Final Comprehensive Summary:
 """

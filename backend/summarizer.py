@@ -121,7 +121,9 @@ def estimate_tokens(text: str) -> int:
 
 def log_chatgpt_request(prompt_template: str, article_text: str, chunk_number: int = None):
     """Log the exact request being sent to ChatGPT for debugging"""
-    full_prompt = prompt_template.format(article_text=article_text)
+    # Safely replace template placeholders to avoid format code errors
+    safe_article_text = str(article_text).replace('{', '{{').replace('}', '}}')
+    full_prompt = prompt_template.format(article_text=safe_article_text)
     
     chunk_info = f" (chunk {chunk_number})" if chunk_number else ""
     logger.info(f"🚀 FULL PROMPT being sent to ChatGPT{chunk_info}:")
@@ -272,7 +274,8 @@ def summarize_article(article_text: str) -> str:
             
             for i, chunk in enumerate(chunks):
                 logger.info(f"Processing chunk {i+1}/{len(chunks)}")
-                chunk_summary = chain.run(article_text=chunk)
+                safe_chunk = sanitize_article_text(chunk)
+                chunk_summary = chain.run(article_text=safe_chunk)
                 if chunk_summary and chunk_summary.strip():
                     summaries.append(chunk_summary.strip())
             
@@ -633,6 +636,15 @@ def create_intent_aware_chain(intent: str, confidence: float):
         logger.error(f"Error creating intent-aware summarization chain: {str(e)}")
         return None
 
+def sanitize_article_text(text: str) -> str:
+    """Sanitize article text to prevent format string errors"""
+    if not text:
+        return ""
+    # Remove or escape any characters that could cause format string issues
+    # Replace curly braces to prevent format code errors
+    sanitized = str(text).replace('{', '(').replace('}', ')')
+    return sanitized
+
 def summarize_article_with_intent(article_text: str, title: str = "Unknown", intent: str = "General", confidence: float = 0.5) -> dict:
     """
     Summarize an article using intent-aware prompting
@@ -683,7 +695,8 @@ def summarize_article_with_intent(article_text: str, title: str = "Unknown", int
                         for i, chunk in enumerate(chunks[:2]):  # Limit to first 2 chunks
                             try:
                                 log_chatgpt_request(chain.prompt.template, chunk, i+1)
-                                chunk_summary = chain.run(article_text=chunk)
+                                safe_chunk = sanitize_article_text(chunk)
+                                chunk_summary = chain.run(article_text=safe_chunk)
                                 summaries.append(chunk_summary)
                                 logger.info(f"✅ Chunk {i+1} summarized successfully")
                             except Exception as e:
@@ -704,7 +717,8 @@ def summarize_article_with_intent(article_text: str, title: str = "Unknown", int
                     chain = create_intent_aware_chain(intent, confidence)
                     if chain:
                         log_chatgpt_request(chain.prompt.template, article_text)
-                        summary = chain.run(article_text=article_text)
+                        safe_article_text = sanitize_article_text(article_text)
+                        summary = chain.run(article_text=safe_article_text)
                         logger.info("✅ Intent-aware OpenAI summarization completed successfully")
                         return {
                             'summary': summary,

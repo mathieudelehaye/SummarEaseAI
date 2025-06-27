@@ -490,7 +490,7 @@ def summarize_multi_source():
         
         # Run multi-source agent
         agent = MultiSourceAgent()
-        result = agent.run_multi_source_search(query)
+        result = agent.run_multi_source_search_with_agents(query)
         
         if 'error' in result:
             return jsonify({'error': result['error']}), 500
