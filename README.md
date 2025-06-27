@@ -19,7 +19,7 @@
 ### 🧠 **Intent Recognition**
 - **TensorFlow Neural Network**: ✅ **WORKING** - Custom Bidirectional LSTM model for intent classification
 - **Keyword-based Fallback**: ✅ **WORKING** - Reliable backup intent classification system
-- **9 Intent Categories**: ✅ **WORKING** - History, Science, Biography, Technology, Arts, Sports, Politics, Geography, General
+- **9 Intent Categories**: ✅ **WORKING** - History, Science, Biography, Technology, Arts (includes Music), Sports, Politics, Geography, General
 - **Real-time Confidence Scoring**: ✅ **WORKING** - Interactive gauges showing prediction confidence
 
 ### 🤖 **Multi-Source Intelligence**
@@ -254,6 +254,7 @@ print(f"Method: {result['method']}")
 - **Science**: "Explain how photosynthesis works"
 - **Biography**: "Tell me about Marie Curie's discoveries"
 - **Technology**: "How do neural networks function?"
+- **Arts (Music)**: "Who were the Beatles?" 
 - **Geography**: "Where are the Himalayas located?"
 
 ### Regular Summarization Examples ✅
@@ -270,7 +271,7 @@ print(f"Method: {result['method']}")
 - **Validation Accuracy**: ~92%
 - **Model Size**: ~2.5MB
 - **Inference Time**: <100ms per query
-- **Categories**: 9 distinct intent classes
+- **Categories**: 9 distinct intent classes (History, Science, Biography, Technology, Arts, Sports, Politics, Geography, General)
 - **Fallback**: Keyword-based system for reliability
 
 ### Multi-Source Agent System ✅

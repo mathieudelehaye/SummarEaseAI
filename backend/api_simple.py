@@ -285,6 +285,11 @@ def summarize():
             confidence
         )
         
+        # Calculate analytics for frontend
+        max_lines_requested = data.get('max_lines', 30)
+        article_length = len(article_info['content'])
+        summary_length = len(summary_result['summary'])
+        
         response = {
             'query': query,
             'enhanced_query': enhanced_query if enhanced_query != query else None,
@@ -300,7 +305,13 @@ def summarize():
             'word_count': {
                 'original': len(article_info['content'].split()),
                 'summary': len(summary_result['summary'].split())
-            }
+            },
+            
+            # Analytics for frontend
+            'max_lines': max_lines_requested,
+            'article_length': article_length,
+            'summary_length': summary_length,
+            'summarization_method': summary_result['method']
         }
         
         logger.info(f"Summarization completed: {summary_result['method']}")
@@ -495,10 +506,25 @@ def summarize_multi_source():
         if 'error' in result:
             return jsonify({'error': result['error']}), 500
         
+        # Calculate analytics for frontend
+        summary_text = result.get('final_synthesis', 'No summary available')
+        max_lines_requested = data.get('max_lines', 30)
+        
+        # Calculate total article length from summaries
+        total_article_length = 0
+        summaries = result.get('summaries', [])
+        for summary_item in summaries:
+            # Estimate article length from summary (summaries are typically 10-20% of original)
+            summary_len = len(summary_item.get('summary', ''))
+            estimated_article_len = summary_len * 5  # Rough estimate
+            total_article_length += estimated_article_len
+        
+        summary_length = len(summary_text)
+        
         # Map multi-source agent response to frontend-expected format
         frontend_result = {
             'query': result.get('query', query),
-            'summary': result.get('final_synthesis', 'No summary available'),
+            'summary': summary_text,
             'title': f"Multi-Source Analysis: {query}",
             'method': 'multi_source_agent',
             'intent': result.get('intent', 'Unknown'),
@@ -510,6 +536,12 @@ def summarize_multi_source():
             'wikipedia_pages_used': result.get('wikipedia_pages_used', []),
             'agents_used': result.get('agents_used', []),
             'cost_tracking': result.get('cost_tracking', {}),
+            
+            # Analytics for frontend
+            'max_lines': max_lines_requested,
+            'article_length': total_article_length,
+            'summary_length': summary_length,
+            'summarization_method': f"Multi-Source Agent ({result.get('articles_summarized', 0)} articles)",
             
             # Include raw multi-source data for debugging
             'multi_source_data': result
