@@ -152,7 +152,6 @@ tensorflow_models/*/tokenizer/
 # Training data and temporary files
 *_training_sample*.json
 enhanced_training_data.csv
-training_history.png
 training_data/
 *.tmp
 *_temp.*
@@ -164,6 +163,8 @@ ft_training_data.json
 checkpoints/
 logs/
 tensorboard_logs/
+
+training_history.png
 
 # Spyder project settings
 .spyderproject
@@ -225,7 +226,6 @@ cython_debug/
 *.code-workspace
 
 *.csv
-*.png
 *.json
 
 # TensorFlow and ML models
