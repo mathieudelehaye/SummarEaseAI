@@ -8,7 +8,7 @@
 ![TensorFlow](https://img.shields.io/badge/TensorFlow-2.13+-orange.svg)
 ![HuggingFace](https://img.shields.io/badge/🤗_Transformers-4.35+-yellow.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)
 
 </div>
 
@@ -63,9 +63,10 @@
 - **Sentence Transformers**: 🧪 **UNDER TEST** - Convert text to 384-dimensional meaning vectors
 - **Cosine Similarity**: 🧪 **UNDER TEST** - Mathematical comparison of text meanings
 
-### 🧠 **BERT Intent Classification** - NOW UNDER TEST
-- **🤗 BERT Transformer**: 🧪 **UNDER TEST** - Pre-trained BERT model fine-tuned for intent detection
-- **Model Comparison**: 🧪 **UNDER TEST** - Side-by-side comparison of TensorFlow vs BERT performance
+### 🚀 **GPU BERT Intent Classification** - WORKING ✅
+- **GPU BERT Model**: ✅ **WORKING** - DistilBERT with DirectML GPU acceleration for intent detection
+- **Custom Training**: ✅ **WORKING** - Trained on Wikipedia dataset with 9 intent categories
+- **High Performance**: ✅ **WORKING** - GPU-accelerated inference with confidence scoring
 
 ---
 
@@ -75,7 +76,7 @@
 |-----------|------------|--------|---------|
 | **Frontend** | Streamlit | ✅ **WORKING** | Interactive web interface |
 | **Backend** | Flask + CORS | ✅ **WORKING** | RESTful API server |
-| **Intent Classification** | TensorFlow + Keywords | ✅ **WORKING** | Dual ML approach |
+| **Intent Classification** | TensorFlow + GPU BERT | ✅ **WORKING** | Dual ML approach |
 | **Multi-Source Agents** | LangChain + OpenAI | ✅ **WORKING** | Intelligent article synthesis |
 | **Summarization** | LangChain + OpenAI | ✅ **WORKING** | Cloud-based summarization |
 | **Local AI** | 🤗 Transformers | 🧪 **UNDER TEST** | Local model inference |
@@ -120,7 +121,7 @@ cd ..
 ### 5. Start the Application
 ```bash
 # Terminal 1 - Backend API
-cd backend && python api_simple.py
+cd backend && python api.py
 
 # Terminal 2 - Frontend (in new terminal)
 streamlit run app.py
@@ -180,23 +181,16 @@ graph TD
 - `GET /status` - Detailed system status ✅
 
 #### Intent Classification
-- `POST /predict_intent` - TensorFlow LSTM + keyword fallback ✅
+- `POST /intent` - TensorFlow LSTM intent classification ✅
+- `POST /intent_bert` - GPU BERT intent classification ✅
 
 #### Summarization
-- `POST /summarize` - OpenAI + LangChain summarization ✅
+- `POST /summarize` - Single source Wikipedia summarization ✅
 - `POST /summarize_multi_source` - Multi-source agent synthesis ✅
-- `POST /summarize_agentic` - Enhanced agentic summarization ✅
 
-#### Wikipedia Integration
-- `POST /search_wikipedia` - Smart Wikipedia search ✅
-
-### Under Test Endpoints 🧪
-
-#### Advanced Features
-- `POST /predict_intent_bert` - 🧪 BERT intent prediction
-- `POST /compare_models` - 🧪 Compare TensorFlow vs BERT
-- `POST /summarize_local` - 🧪 Local Hugging Face summarization
-- `POST /semantic_search` - 🧪 Semantic Wikipedia search
+#### Specialized APIs (Optional)
+- `POST /predict_intent` (tf_intent_api.py) - TensorFlow LSTM only ✅
+- `POST /predict` (bert_intent_api.py) - GPU BERT only ✅
 
 ### Usage Examples
 

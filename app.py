@@ -93,7 +93,9 @@ def get_api_status():
 def predict_intent(text, model_type='tensorflow'):
     """Predict intent using specified model"""
     try:
-        endpoint = '/predict_intent' if model_type == 'tensorflow' else '/predict_intent_bert'
+        # Map frontend model types to api_simple endpoints
+        endpoint = '/intent' if model_type == 'tensorflow' else '/intent_bert'
+        
         response = requests.post(
             f"{API_BASE_URL}{endpoint}",
             json={'text': text},
@@ -105,42 +107,29 @@ def predict_intent(text, model_type='tensorflow'):
         st.error(f"Error predicting intent: {str(e)}")
     return None
 
-def compare_models(text):
-    """Compare different AI models"""
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/compare_models",
-            json={'text': text},
-            timeout=15
-        )
-        if response.status_code == 200:
-            return response.json()
-    except Exception as e:
-        st.error(f"Error comparing models: {str(e)}")
-    return None
+
 
 def summarize_article(topic, max_lines=30, use_intent=True, model_type='openai'):
     """Summarize Wikipedia article using specified method"""
     try:
-        if model_type == 'openai':
-            endpoint = '/summarize'
-        elif model_type == 'multi_source':
+        # Map model types to api_simple endpoints
+        if model_type == 'multi_source':
             endpoint = '/summarize_multi_source'
+            payload = {
+                'query': topic,
+                'max_lines': max_lines
+            }
         else:
-            endpoint = '/summarize_local'
-        payload = {
-            'query': topic,  # Changed from 'topic' to 'query' to match backend
-            'max_lines': max_lines,
-            'use_intent': use_intent
-        }
-        
-        if model_type == 'huggingface':
-            payload['model'] = 'facebook/bart-large-cnn'  # Default HF model
+            endpoint = '/summarize'
+            payload = {
+                'query': topic,
+                'max_lines': max_lines
+            }
         
         response = requests.post(
             f"{API_BASE_URL}{endpoint}",
             json=payload,
-            timeout=60  # Increased timeout for local models
+            timeout=60
         )
         
         return response.json(), response.status_code
@@ -182,7 +171,7 @@ def main():
             if api_status and 'features' in api_status:
                 features = api_status['features']
                 st.info(f"🧠 TensorFlow LSTM: {'✅' if features.get('tensorflow_model') else '❌'}")
-                st.info(f"🤗 HuggingFace: {'✅' if features.get('huggingface_features') else '❌'}")
+                st.info(f"🚀 GPU BERT: {'✅' if features.get('bert_model') else '❌'}")
                 st.info(f"📡 OpenAI: {'✅' if features.get('openai_summarization') else '❌'}")
                 st.info(f"🌍 Wikipedia: {'✅' if features.get('wikipedia_fetching') else '❌'}")
         else:
@@ -205,15 +194,15 @@ def main():
         st.markdown("**Summarization:**")
         summary_model = st.radio(
             "Choose summarization method:",
-            ["OpenAI + LangChain", "🤗 Local Hugging Face"],
-            help="OpenAI provides high quality but requires API key. Hugging Face runs locally."
+            ["Single Source", "Multi-Source Agent"],
+            help="Single source uses one Wikipedia article. Multi-source synthesizes multiple sources."
         )
         
         st.markdown("**Intent Classification:**")
         intent_model = st.radio(
             "Choose intent model:",
-            ["TensorFlow LSTM", "🤗 BERT Transformer"],
-            help="Compare custom Wikipedia-trained TensorFlow model vs pre-trained BERT."
+            ["TensorFlow LSTM", "GPU BERT"],
+            help="Compare custom Wikipedia-trained TensorFlow model vs GPU-accelerated BERT."
         )
         
         st.divider()
@@ -243,10 +232,9 @@ def main():
         return
     
     # Create tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "🔍 Summarize", 
         "🧠 Intent Analysis", 
-        "🔍 Semantic Search", 
         "⚖️ Model Comparison",
         "📊 Analytics"
     ])
@@ -259,8 +247,8 @@ def main():
         with col2:
             local_summary_model = st.selectbox(
                 "AI Model:",
-                ["OpenAI + LangChain", "🤖 Multi-Source Agent", "🤗 BART (Local)", "🤗 T5 (Local)"],
-                help="Choose between cloud, multi-source agent, or local AI models"
+                ["Single Source (OpenAI)", "Multi-Source Agent"],
+                help="Choose between single Wikipedia article or multi-source synthesis"
             )
         
         # Input form
@@ -276,17 +264,14 @@ def main():
         
         if submit_button and topic:
             # Determine model type
-            if 'OpenAI' in local_summary_model:
-                model_type = 'openai'
-            elif 'Multi-Source' in local_summary_model:
+            if 'Multi-Source' in local_summary_model:
                 model_type = 'multi_source'
             else:
-                model_type = 'huggingface'
+                model_type = 'openai'
             
             spinner_text = {
-                'openai': '🤖 OpenAI',
-                'multi_source': '🤖 Multi-Source Agent',
-                'huggingface': '🤗 Hugging Face'
+                'openai': '🤖 Single Source',
+                'multi_source': '🤖 Multi-Source Agent'
             }.get(model_type, '🤖 AI')
             
             with st.spinner(f"{spinner_text} is working on your request..."):
@@ -352,7 +337,7 @@ def main():
         with col2:
             selected_intent_model = st.selectbox(
                 "Model:",
-                ["TensorFlow LSTM", "🤗 BERT", "Compare Both"],
+                ["TensorFlow LSTM", "GPU BERT"],
                 help="Choose intent classification model"
             )
         
@@ -367,154 +352,37 @@ def main():
             predict_button = st.form_submit_button("🧠 Predict Intent")
         
         if predict_button and intent_text:
-            if selected_intent_model == "Compare Both":
-                # Compare models
-                with st.spinner("Comparing AI models..."):
-                    comparison_result = compare_models(intent_text)
+            # Single model prediction
+            model_type = 'tensorflow' if 'TensorFlow' in selected_intent_model else 'bert'
+            
+            with st.spinner("Analyzing intent..."):
+                intent_result = predict_intent(intent_text, model_type)
+            
+            if intent_result:
+                col1, col2 = st.columns([1, 1])
                 
-                if comparison_result and comparison_result.get('model_predictions'):
-                    st.subheader("⚖️ Model Comparison")
-                    predictions = comparison_result['model_predictions']
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    # TensorFlow results
-                    if 'tensorflow_lstm' in predictions:
-                        with col1:
-                            tf_result = predictions['tensorflow_lstm']
-                            st.markdown("### 🧠 TensorFlow LSTM")
-                            st.markdown(f"**Intent:** {tf_result['intent']}")
-                            st.markdown(f"**Confidence:** {tf_result['confidence']:.1%}")
-                            
-                            # Confidence gauge
-                            fig_tf = go.Figure(go.Indicator(
-                                mode="gauge+number",
-                                value=tf_result['confidence'] * 100,
-                                title={'text': "TF Confidence"},
-                                gauge={'axis': {'range': [None, 100]},
-                                       'bar': {'color': "orange"}},
-                                domain={'x': [0, 1], 'y': [0, 1]}
-                            ))
-                            fig_tf.update_layout(height=200)
-                            st.plotly_chart(fig_tf, use_container_width=True)
-                    
-                    # BERT results
-                    if 'bert_transformer' in predictions:
-                        with col2:
-                            bert_result = predictions['bert_transformer']
-                            st.markdown("### 🤗 BERT Transformer")
-                            st.markdown(f"**Intent:** {bert_result['intent']}")
-                            st.markdown(f"**Confidence:** {bert_result['confidence']:.1%}")
-                            
-                            # Confidence gauge
-                            fig_bert = go.Figure(go.Indicator(
-                                mode="gauge+number",
-                                value=bert_result['confidence'] * 100,
-                                title={'text': "BERT Confidence"},
-                                gauge={'axis': {'range': [None, 100]},
-                                       'bar': {'color': "green"}},
-                                domain={'x': [0, 1], 'y': [0, 1]}
-                            ))
-                            fig_bert.update_layout(height=200)
-                            st.plotly_chart(fig_bert, use_container_width=True)
+                with col1:
+                    st.subheader("🎯 Prediction Result")
+                    st.markdown(f"**Text:** {intent_result['text']}")
+                    st.markdown(f"**Model:** {intent_result['model_type']}")
+                    st.markdown(f"**Predicted Intent:** {intent_result['intent']}")
+                    st.markdown(f"**Confidence:** {intent_result['confidence']:.1%}")
                 
-            else:
-                # Single model prediction
-                model_type = 'tensorflow' if 'TensorFlow' in selected_intent_model else 'bert'
-                
-                with st.spinner("Analyzing intent..."):
-                    intent_result = predict_intent(intent_text, model_type)
-                
-                if intent_result:
-                    col1, col2 = st.columns([1, 1])
-                    
-                    with col1:
-                        st.subheader("🎯 Prediction Result")
-                        st.markdown(f"**Text:** {intent_result['text']}")
-                        st.markdown(f"**Model:** {intent_result['model_type']}")
-                        st.markdown(f"**Predicted Intent:** {intent_result['predicted_intent']}")
-                        st.markdown(f"**Confidence:** {intent_result['confidence']:.1%}")
-                    
-                    with col2:
-                        # Confidence gauge
-                        fig = go.Figure(go.Indicator(
-                            mode="gauge+number+delta",
-                            value=intent_result['confidence'] * 100,
-                            title={'text': "Confidence Score"},
-                            delta={'reference': 80},
-                            gauge={'axis': {'range': [None, 100]},
-                                   'bar': {'color': "darkblue"}},
-                            domain={'x': [0, 1], 'y': [0, 1]}
-                        ))
-                        fig.update_layout(height=300)
-                        st.plotly_chart(fig, use_container_width=True)
+                with col2:
+                    # Confidence gauge
+                    fig = go.Figure(go.Indicator(
+                        mode="gauge+number+delta",
+                        value=intent_result['confidence'] * 100,
+                        title={'text': "Confidence Score"},
+                        delta={'reference': 80},
+                        gauge={'axis': {'range': [None, 100]},
+                               'bar': {'color': "darkblue"}},
+                        domain={'x': [0, 1], 'y': [0, 1]}
+                    ))
+                    fig.update_layout(height=300)
+                    st.plotly_chart(fig, use_container_width=True)
     
     with tab3:
-        st.header("🔍 Semantic Search")
-        st.markdown("Find Wikipedia articles using **sentence embeddings** - search by meaning, not just keywords!")
-        
-        # Explanation of sentence embeddings
-        with st.expander("🧠 What are Sentence Embeddings?"):
-            st.markdown("""
-            **Sentence embeddings** convert text into numerical vectors that capture semantic meaning:
-            
-            1. **Traditional keyword search**: "Apollo 11" only finds articles with those exact words
-            2. **Semantic search**: "moon landing mission" finds related articles about Apollo 11, lunar exploration, NASA missions, etc.
-            
-            **Example:**
-            - Query: "How to land on the moon?"
-            - Traditional: Limited results with exact keywords
-            - Semantic: Finds "Apollo 11", "Lunar Module", "NASA missions", "Space exploration"
-            
-            **Technology**: Uses 🤗 SentenceTransformers to create 384-dimensional vectors representing meaning.
-            """)
-        
-        # Search form
-        with st.form("semantic_search_form"):
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                search_query = st.text_input(
-                    "Enter your search query:",
-                    placeholder="e.g., 'space exploration missions' or 'renewable energy technology'",
-                    help="Search by meaning - try natural language questions!"
-                )
-            
-            with col2:
-                st.write("")  # Spacing
-                st.write("")  # Spacing
-                search_button = st.form_submit_button("🔍 Semantic Search", use_container_width=True)
-        
-        if search_button and search_query:
-            with st.spinner("🔍 Searching with sentence embeddings..."):
-                search_result = semantic_search(search_query, max_results=5)
-            
-            if search_result:
-                st.subheader("📋 Search Results")
-                st.markdown(f"**Query:** {search_result['query']}")
-                st.markdown(f"**Method:** {search_result['search_method']}")
-                st.markdown(f"**Model:** {search_result['model_used']}")
-                
-                # Display results
-                articles = search_result.get('similar_articles', [])
-                if articles:
-                    for i, article in enumerate(articles, 1):
-                        st.markdown(f"**{i}. {article}**")
-                        
-                        # Add quick summarize button
-                        if st.button(f"📝 Summarize '{article}'", key=f"sum_{i}"):
-                            with st.spinner(f"Summarizing {article}..."):
-                                sum_result, sum_status = summarize_article(article, max_lines=20)
-                            
-                            if sum_status == 200:
-                                st.success(f"Summary of **{article}**:")
-                                st.write(sum_result['summary'])
-                            else:
-                                st.error(f"Could not summarize {article}")
-                else:
-                    st.info("No similar articles found. Try a different query.")
-    
-    with tab4:
         st.header("⚖️ AI Model Comparison")
         st.markdown("Compare different AI models side-by-side to understand their strengths and differences.")
         
@@ -530,47 +398,25 @@ def main():
             )
         
         with col2:
-            if st.button("⚖️ Compare Models", use_container_width=True):
+            if st.button("🧠 Test TensorFlow LSTM", use_container_width=True):
                 if test_text:
-                    with st.spinner("Comparing AI models..."):
-                        comparison = compare_models(test_text)
+                    with st.spinner("Testing TensorFlow LSTM..."):
+                        tf_result = predict_intent(test_text, 'tensorflow')
                     
-                    if comparison and comparison.get('model_predictions'):
-                        st.subheader("📊 Comparison Results")
-                        
-                        # Create comparison table
-                        predictions = comparison['model_predictions']
-                        comparison_data = []
-                        
-                        for model_name, result in predictions.items():
-                            comparison_data.append({
-                                'Model': result['model_type'],
-                                'Predicted Intent': result['intent'],
-                                'Confidence': f"{result['confidence']:.1%}",
-                                'Confidence Score': result['confidence']
-                            })
-                        
-                        if comparison_data:
-                            df = pd.DataFrame(comparison_data)
-                            st.dataframe(df, use_container_width=True)
-                            
-                            # Visualization
-                            if len(comparison_data) > 1:
-                                fig = go.Figure()
-                                fig.add_trace(go.Bar(
-                                    x=[d['Model'] for d in comparison_data],
-                                    y=[d['Confidence Score'] for d in comparison_data],
-                                    text=[d['Confidence'] for d in comparison_data],
-                                    textposition='auto',
-                                    marker_color=['orange', 'green']
-                                ))
-                                fig.update_layout(
-                                    title="Model Confidence Comparison",
-                                    xaxis_title="AI Model",
-                                    yaxis_title="Confidence Score",
-                                    height=400
-                                )
-                                st.plotly_chart(fig, use_container_width=True)
+                    if tf_result:
+                        st.subheader("🧠 TensorFlow LSTM Result")
+                        st.markdown(f"**Intent:** {tf_result['intent']}")
+                        st.markdown(f"**Confidence:** {tf_result['confidence']:.1%}")
+            
+            if st.button("🚀 Test GPU BERT", use_container_width=True):
+                if test_text:
+                    with st.spinner("Testing GPU BERT..."):
+                        bert_result = predict_intent(test_text, 'bert')
+                    
+                    if bert_result:
+                        st.subheader("🚀 GPU BERT Result")
+                        st.markdown(f"**Intent:** {bert_result['intent']}")
+                        st.markdown(f"**Confidence:** {bert_result['confidence']:.1%}")
         
         # Model information
         st.subheader("🔧 Model Information")
@@ -589,17 +435,18 @@ def main():
             """)
         
         with col2:
-            st.markdown("### 🤗 BERT Transformer")
+            st.markdown("### 🚀 GPU BERT")
             st.markdown("""
-            - **Architecture**: Pre-trained BERT base model
-            - **Fine-tuning**: Intent classification task
+            - **Architecture**: DistilBERT with GPU acceleration
+            - **Training**: Custom Wikipedia dataset
             - **Vocabulary**: 30,522 subword tokens
             - **Sequence Length**: 512 tokens
             - **Categories**: 9 intent classes
             - **Model Size**: ~110MB
+            - **GPU**: DirectML accelerated
             """)
     
-    with tab5:
+    with tab4:
         st.header("📊 System Analytics")
         
         # System information
