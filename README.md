@@ -17,15 +17,22 @@
 ## 📸 Application Screenshots
 
 ### 🎯 Main Interface - Multi-Source Summarization
-![SummarEaseAI Main Interface](screenshots/Screenshot00.png)
+
+<p align="left">
+    <img src="screenshots/Screenshot00.png" alt="Main Interface" width="80%">
+</p>
 *The main summarization interface showing multi-source intelligence with Wikipedia article synthesis, intent classification results, and real-time confidence scoring.*
 
 ### 🧠 Intent Analysis Dashboard
-![Intent Analysis Dashboard](screenshots/Screenshot01.png)
+<p align="left">
+    <img src="screenshots/Screenshot01.png" alt="Intent Analysis Dashboard" width="80%">
+</p>
 *Advanced intent classification dashboard with TensorFlow LSTM and GPU BERT models, featuring interactive confidence gauges and detailed model performance metrics.*
 
 ### 📊 Model Comparison & Analytics
-![Model Comparison Analytics](screenshots/Screenshot02.png)
+<p align="left">
+    <img src="screenshots/Screenshot02.png" alt="Model Comparison Analytics" width="80%">
+</p>    
 *Comprehensive model comparison view showing performance analytics, response times, and accuracy metrics across different AI models and endpoints.*
 
 ---
