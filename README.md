@@ -14,6 +14,22 @@
 
 ---
 
+## 📸 Application Screenshots
+
+### 🎯 Main Interface - Multi-Source Summarization
+![SummarEaseAI Main Interface](screenshots/Screenshot00.png)
+*The main summarization interface showing multi-source intelligence with Wikipedia article synthesis, intent classification results, and real-time confidence scoring.*
+
+### 🧠 Intent Analysis Dashboard
+![Intent Analysis Dashboard](screenshots/Screenshot01.png)
+*Advanced intent classification dashboard with TensorFlow LSTM and GPU BERT models, featuring interactive confidence gauges and detailed model performance metrics.*
+
+### 📊 Model Comparison & Analytics
+![Model Comparison Analytics](screenshots/Screenshot02.png)
+*Comprehensive model comparison view showing performance analytics, response times, and accuracy metrics across different AI models and endpoints.*
+
+---
+
 ## 🎯 Currently Working Features ✅
 
 ### 🧠 **Intent Recognition**
@@ -135,6 +151,41 @@ python quick_start.py
 
 ### 7. Access the Application
 Open your browser and navigate to `http://localhost:8501`
+
+---
+
+## 📊 Visual Interface Overview
+
+The application features a modern, intuitive interface with multiple specialized tabs:
+
+### 📝 **Summarization Tab**
+- Multi-source Wikipedia article synthesis
+- Intent-aware processing with confidence scoring
+- Customizable summary length and style
+- Real-time processing indicators
+
+### 🧠 **Intent Analysis Tab** 
+- Dual model comparison (TensorFlow LSTM vs GPU BERT)
+- Interactive confidence gauges and charts
+- Detailed model performance metrics
+- Category-wise prediction analysis
+
+### 🔍 **Semantic Search Tab** (Under Test)
+- Meaning-based article discovery
+- Vector similarity visualization
+- Embedding space exploration
+
+### 📊 **Model Comparison Tab**
+- Side-by-side model performance
+- Response time analytics
+- Accuracy metrics and benchmarks
+- API endpoint status monitoring
+
+### 📈 **Analytics Dashboard**
+- Usage statistics and trends
+- Model performance over time
+- Cost tracking and optimization
+- System health monitoring
 
 ---
 
@@ -268,6 +319,14 @@ print(f"Method: {result['method']}")
 - **Categories**: 9 distinct intent classes (History, Science, Biography, Technology, Arts, Sports, Politics, Geography, General)
 - **Fallback**: Keyword-based system for reliability
 
+### GPU BERT Intent Classifier ✅
+- **Model**: DistilBERT with DirectML acceleration
+- **Training**: Custom Wikipedia dataset
+- **Model Size**: ~110MB
+- **Inference Time**: <200ms per query (GPU accelerated)
+- **Categories**: 9 distinct intent classes (same as TensorFlow)
+- **GPU Support**: DirectML compatible (RTX 4070, etc.)
+
 ### Multi-Source Agent System ✅
 - **Articles per Query**: 1-3 (configurable)
 - **Cost Modes**: MINIMAL, BALANCED, COMPREHENSIVE
@@ -348,6 +407,34 @@ COST_MODES = {
 
 ---
 
+## 🧪 Testing Suite
+
+The project includes a comprehensive unit test suite covering all critical components:
+
+### 🚀 **Run Tests**
+```bash
+# Quick test run
+python test_runner.py
+
+# Run with coverage
+python test_runner.py coverage
+
+# Run specific test categories
+python test_runner.py unit           # Unit tests only
+python test_runner.py api            # API tests only
+python test_runner.py integration    # Integration tests
+```
+
+### 📊 **Test Coverage**
+- **140+ test cases** covering critical functionality
+- **5 major components** thoroughly tested
+- **Coverage reporting** with HTML output
+- **CI/CD ready** configuration
+
+For detailed testing information, see [TESTING.md](TESTING.md).
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! Focus areas:
@@ -380,7 +467,9 @@ python quick_start.py
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+
+**Why AGPL-3.0?** This license ensures that any improvements to SummarEaseAI remain open-source and benefit the entire AI research community, even when used in web services or cloud deployments.
 
 ---
 
