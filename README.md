@@ -1,6 +1,6 @@
-# 🚀 SummarEaseAI v2.0
+# 🚀 SummarEaseAI 
 
-**SummarEaseAI v2.0** is an AI-powered chatbot that intelligently summarizes Wikipedia articles using state-of-the-art machine learning technologies. It combines **TensorFlow neural networks** for intent classification, **🤗 Hugging Face Transformers** for local AI capabilities, **LangChain** for prompt orchestration, and **OpenAI's GPT** models for high-quality summarization—all wrapped in a beautiful Streamlit interface.
+**SummarEaseAI** is an AI-powered chatbot that intelligently summarizes Wikipedia articles using state-of-the-art machine learning technologies. It combines **TensorFlow neural networks** for intent classification, **🤗 Hugging Face Transformers** for local AI capabilities, **LangChain** for prompt orchestration, and **OpenAI's GPT** models for high-quality summarization—all wrapped in a beautiful Streamlit interface.
 
 <div align="center">
 
@@ -200,7 +200,7 @@ The application features a modern, intuitive interface with multiple specialized
 
 ```mermaid
 graph TD
-    A[User Input] --> B[Streamlit Frontend v2.0]
+    A[User Input] --> B[Streamlit Frontend]
     B --> C[Flask API Backend]
     C --> D[Intent Classifier]
     D --> E[TensorFlow LSTM ✅]
@@ -495,7 +495,7 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 **Built with ❤️ using AI to make information more accessible**
 
-### 🚀 **SummarEaseAI v2.0 - Multi-Source Intelligence Now Working!**
+### 🚀 **SummarEaseAI - Multi-Source Intelligence Now Working!**
 
 ✅ **Multi-Source Agent** | ✅ **Intent Classification** | ✅ **OpenAI Integration** | 🧪 **Local AI Under Test**
 
