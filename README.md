@@ -182,7 +182,7 @@ graph TD
 #### Intent Classification
 - `POST /predict_intent` - TensorFlow LSTM + keyword fallback ✅
 
-#### Summarization  
+#### Summarization
 - `POST /summarize` - OpenAI + LangChain summarization ✅
 - `POST /summarize_multi_source` - Multi-source agent synthesis ✅
 - `POST /summarize_agentic` - Enhanced agentic summarization ✅
@@ -393,7 +393,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - **🤗 Hugging Face** for democratizing AI with open-source transformers
-- **OpenAI** for GPT models and the OpenAI API  
+- **OpenAI** for GPT models and the OpenAI API
 - **TensorFlow** team for the comprehensive ML framework
 - **Streamlit** for the amazing web app framework
 - **Wikipedia** for providing free access to human knowledge

@@ -130,11 +130,40 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv_gpu_training
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Machine Learning / AI Models
+# TensorFlow/Keras model files (keep initial trained models but ignore training artifacts)
+tensorflow_models/*/variables/variables.data-*
+tensorflow_models/*/variables/variables.index
+# Model artifacts and metadata
+tensorflow_models/*/keras_metadata.pb
+tensorflow_models/*/saved_model.pb
+tensorflow_models/*/tokenizer/vocab.txt
+# Complete model directories
+tensorflow_models/bert_gpu_models/
+tensorflow_models/*/bert_gpu_model/
+tensorflow_models/*/tokenizer/
+# Training data and temporary files
+*_training_sample*.json
+enhanced_training_data.csv
+training_history.png
+training_data/
+*.tmp
+*_temp.*
+*_cache.*
+temp_*
+sample_ft_data.json
+ft_training_data.json
+# Model checkpoints and logs
+checkpoints/
+logs/
+tensorboard_logs/
 
 # Spyder project settings
 .spyderproject

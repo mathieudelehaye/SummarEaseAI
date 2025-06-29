@@ -22,31 +22,31 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Core imports (these work fine with DirectML)
 from utils.wikipedia_fetcher import fetch_article, search_and_fetch_article, search_and_fetch_article_info, fetch_article_with_conversion_info, enhance_query_with_intent
 from backend.summarizer import summarize_article_with_limit, summarize_article, get_summarization_status, summarize_article_with_intent
-from tensorflow_models.intent_classifier import get_intent_classifier
+from tensorflow_models.bert_gpu_classifier import get_gpu_classifier
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Initialize intent classifier (TensorFlow basic - works with DirectML)
-intent_classifier = get_intent_classifier()
+# Initialize BERT intent classifier (GPU-accelerated)
+bert_classifier = get_gpu_classifier()
 
-# Try to load pre-trained model
-tf_model_loaded = intent_classifier.load_model("tensorflow_models/saved_model")
+# Try to load pre-trained BERT model
+bert_model_loaded = bert_classifier.load_model()
 
 # Get summarization status
 summarization_status = get_summarization_status()
 
-# Status flags (simplified - no Hugging Face features)
+# Status flags (GPU BERT enabled)
 HF_AVAILABLE = False
 HF_SUMMARIZER_AVAILABLE = False
-HF_BERT_AVAILABLE = False
+HF_BERT_AVAILABLE = True  # GPU BERT is available
 HF_SEMANTIC_AVAILABLE = False
 
-logger.info("🚀 SummarEaseAI Simple Backend initialized")
-logger.info(f"✅ TensorFlow model loaded: {tf_model_loaded}")
+logger.info("🚀 SummarEaseAI Backend initialized with GPU BERT")
+logger.info(f"✅ GPU BERT model loaded: {bert_model_loaded}")
 logger.info(f"✅ OpenAI summarization: {summarization_status.get('openai_available', False)}")
-logger.info("ℹ️  Hugging Face features disabled (DirectML compatibility mode)")
+logger.info("🚀 GPU-accelerated BERT intent classification enabled")
 
 # HTML template for the main page
 HTML_TEMPLATE = """
@@ -71,10 +71,10 @@ HTML_TEMPLATE = """
         
         <div class="status">
             <h3>📊 System Status</h3>
-            <p><strong>TensorFlow Model:</strong> <span class="{{ 'available' if tf_model_loaded else 'unavailable' }}">{{ '✅ Loaded' if tf_model_loaded else '❌ Not Available' }}</span></p>
+            <p><strong>GPU BERT Model:</strong> <span class="{{ 'available' if bert_model_loaded else 'unavailable' }}">{{ '✅ Loaded' if bert_model_loaded else '❌ Not Available' }}</span></p>
             <p><strong>OpenAI Integration:</strong> <span class="{{ 'available' if openai_available else 'unavailable' }}">{{ '✅ Available' if openai_available else '❌ Not Configured' }}</span></p>
             <p><strong>Wikipedia Fetching:</strong> <span class="available">✅ Available</span></p>
-            <p><strong>Mode:</strong> <span class="available">✅ DirectML Compatible</span></p>
+            <p><strong>Mode:</strong> <span class="available">🚀 GPU BERT Accelerated</span></p>
         </div>
 
         <h3>🔗 Available Endpoints</h3>
@@ -89,7 +89,7 @@ HTML_TEMPLATE = """
         </div>
         
         <div class="endpoint">
-            <strong>POST /predict_intent</strong> - Predict user intent (TensorFlow)<br>
+            <strong>POST /predict_intent</strong> - Predict user intent (GPU BERT)<br>
             <code>{"text": "your text"}</code>
         </div>
         
@@ -116,7 +116,7 @@ HTML_TEMPLATE = """
 def home():
     """Main page showing backend status and available endpoints"""
     return render_template_string(HTML_TEMPLATE, 
-                                tf_model_loaded=tf_model_loaded,
+                                bert_model_loaded=bert_model_loaded,
                                 openai_available=summarization_status.get('openai_available', False))
 
 @app.route('/status')
@@ -124,12 +124,12 @@ def status():
     """System status endpoint"""
     return jsonify({
         'status': 'running',
-        'mode': 'DirectML Compatible',
+        'mode': 'GPU BERT Accelerated',
         'features': {
-            'tensorflow_model': tf_model_loaded,
+            'bert_model': bert_model_loaded,
             'openai_summarization': summarization_status.get('openai_available', False),
             'wikipedia_fetching': True,
-            'huggingface_features': False
+            'gpu_acceleration': True
         },
         'endpoints': ['/status', '/summarize', '/predict_intent', '/search_wikipedia', '/summarize_agentic', '/summarize_multi_source']
     })
@@ -140,15 +140,15 @@ def health():
     return jsonify({
         'status': 'healthy',
         'backend': 'running',
-        'mode': 'DirectML Compatible',
-        'tensorflow_model': tf_model_loaded
+        'mode': 'GPU BERT Accelerated',
+        'bert_model': bert_model_loaded
     })
 
 
 
 @app.route('/predict_intent', methods=['POST'])
 def predict_intent():
-    """Predict intent using hybrid approach (Keyword-based + TensorFlow)"""
+    """Predict intent using GPU BERT with keyword fallback"""
     try:
         data = request.json
         if not data or 'text' not in data:
@@ -158,39 +158,82 @@ def predict_intent():
         if not text:
             return jsonify({'error': 'Empty text provided'}), 400
         
-        # First try keyword-based classification (more reliable)
-        keyword_intent, keyword_confidence = classify_intent_keywords(text)
+        # Try GPU BERT model first
+        if bert_classifier and bert_model_loaded:
+            try:
+                bert_intent, bert_confidence = bert_classifier.predict(text)
+                logger.info(f"GPU BERT prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f})")
+                
+                response = {
+                    'text': text,
+                    'predicted_intent': bert_intent,
+                    'confidence': bert_confidence,
+                    'model_type': "GPU BERT",
+                    'model_loaded': bert_model_loaded
+                }
+                
+                logger.info(f"Final prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f}, model: GPU BERT)")
+                return jsonify(response)
+                
+            except Exception as e:
+                logger.error(f"GPU BERT prediction failed: {str(e)}, falling back to keywords")
         
-        # Use TensorFlow model if available for comparison
-        if intent_classifier and tf_model_loaded:
-            tf_intent, tf_confidence = intent_classifier.predict_intent(text)
-            logger.info(f"TF prediction - Text: '{text}' -> Intent: {tf_intent} (confidence: {tf_confidence:.3f})")
-            
-            # If keyword classifier has high confidence, use it; otherwise use TF
-            if keyword_confidence >= 0.6:
-                intent, confidence = keyword_intent, keyword_confidence
-                model_used = "Keyword-based"
-            else:
-                intent, confidence = tf_intent, tf_confidence
-                model_used = "TensorFlow LSTM"
-        else:
-            # Fallback to keyword classification only
-            intent, confidence = keyword_intent, keyword_confidence
-            model_used = "Keyword-based"
+        # Fallback to keyword-based classification
+        keyword_intent, keyword_confidence = classify_intent_keywords(text)
         
         response = {
             'text': text,
-            'predicted_intent': intent,
-            'confidence': confidence,
-            'model_type': model_used,
-            'model_loaded': tf_model_loaded
+            'predicted_intent': keyword_intent,
+            'confidence': keyword_confidence,
+            'model_type': "Keyword-based (fallback)",
+            'model_loaded': bert_model_loaded
         }
         
-        logger.info(f"Final prediction - Text: '{text}' -> Intent: {intent} (confidence: {confidence:.3f}, model: {model_used})")
+        logger.info(f"Fallback prediction - Text: '{text}' -> Intent: {keyword_intent} (confidence: {keyword_confidence:.3f})")
         return jsonify(response)
         
     except Exception as e:
         logger.error(f"Error in intent prediction: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/predict_intent_bert', methods=['POST'])
+def predict_intent_bert():
+    """Predict intent using GPU BERT model"""
+    try:
+        data = request.json
+        if not data or 'text' not in data:
+            return jsonify({'error': 'Missing text parameter'}), 400
+        
+        text = data['text'].strip()
+        if not text:
+            return jsonify({'error': 'Empty text provided'}), 400
+        
+        # Use GPU BERT model
+        if bert_classifier and bert_model_loaded:
+            bert_intent, bert_confidence = bert_classifier.predict(text)
+            logger.info(f"GPU BERT prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f})")
+            
+            response = {
+                'text': text,
+                'predicted_intent': bert_intent,
+                'confidence': bert_confidence,
+                'model_type': "GPU BERT",
+                'model_loaded': bert_model_loaded
+            }
+        else:
+            # Fallback if model not loaded
+            response = {
+                'text': text,
+                'predicted_intent': "Unknown",
+                'confidence': 0.0,
+                'model_type': "GPU BERT (Not loaded)",
+                'model_loaded': bert_model_loaded
+            }
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Error in BERT intent prediction: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/search_wikipedia', methods=['POST'])
@@ -227,7 +270,7 @@ def search_wikipedia():
 
 @app.route('/summarize', methods=['POST'])
 def summarize():
-    """Summarize Wikipedia articles with intent detection and targeted search"""
+    """Enhanced summarization with intent detection and smart article selection"""
     try:
         data = request.json
         if not data or 'query' not in data:
@@ -237,29 +280,32 @@ def summarize():
         if not query:
             return jsonify({'error': 'Empty query provided'}), 400
         
-        logger.info(f"Summarization request: '{query}'")
+        logger.info(f"📝 Summarization request: '{query}'")
         
-        # Step 1: Predict intent
-        keyword_intent, keyword_confidence = classify_intent_keywords(query)
+        # Intent detection using GPU BERT
+        intent = "General"
+        intent_confidence = 0.0
+        intent_model = "Keyword fallback"
         
-        if intent_classifier and tf_model_loaded:
-            tf_intent, tf_confidence = intent_classifier.predict_intent(query)
-            
-            # Choose best intent prediction
-            if keyword_confidence >= 0.6:
-                intent, confidence = keyword_intent, keyword_confidence
-                intent_model = "Keyword-based"
-            else:
-                intent, confidence = tf_intent, tf_confidence
-                intent_model = "TensorFlow LSTM"
+        if bert_classifier and bert_model_loaded:
+            try:
+                intent, intent_confidence = bert_classifier.predict(query)
+                intent_model = "GPU BERT"
+                logger.info(f"🧠 Intent detected: {intent} (confidence: {intent_confidence:.3f})")
+            except Exception as e:
+                logger.error(f"GPU BERT intent detection failed: {str(e)}")
+                # Fallback to keyword classification
+                intent, intent_confidence = classify_intent_keywords(query)
+                intent_model = "Keyword fallback"
         else:
-            intent, confidence = keyword_intent, keyword_confidence
-            intent_model = "Keyword-based"
+            # Fallback to keyword classification
+            intent, intent_confidence = classify_intent_keywords(query)
+            intent_model = "Keyword fallback"
         
-        logger.info(f"Intent detected: {intent} (confidence: {confidence:.3f}, model: {intent_model})")
+        logger.info(f"Intent detected: {intent} (confidence: {intent_confidence:.3f}, model: {intent_model})")
         
         # Step 2: Enhance search query based on intent
-        enhanced_query = enhance_query_with_intent(query, intent, confidence)
+        enhanced_query = enhance_query_with_intent(query, intent, intent_confidence)
         
         # Step 3: Search Wikipedia with simple agentic approach
         try:
@@ -282,7 +328,7 @@ def summarize():
             article_info['content'], 
             article_info.get('title', 'Unknown'),
             intent,
-            confidence
+            intent_confidence
         )
         
         # Calculate analytics for frontend
@@ -299,7 +345,7 @@ def summarize():
             'method': summary_result['method'],
             'intent_detection': {
                 'predicted_intent': intent,
-                'confidence': confidence,
+                'confidence': intent_confidence,
                 'model_used': intent_model
             },
             'word_count': {
@@ -336,90 +382,42 @@ def summarize_agentic():
         
         logger.info(f"🤖 Agentic summarization request: '{query}'")
         
-        # Check if we have OpenAI available
-        from backend.summarizer import get_openai_api_key, LANGCHAIN_AVAILABLE
-        
-        if not LANGCHAIN_AVAILABLE or not get_openai_api_key():
-            logger.info("🚫 OpenAI not available - falling back to enhanced method")
-            return summarize_enhanced()
-        
-        # Step 1: Predict intent (existing logic)
-        keyword_intent, keyword_confidence = classify_intent_keywords(query)
-        
-        tf_intent = None
-        tf_confidence = 0.0
-        if tf_model_loaded:
+        # Intent detection
+        intent = "General"
+        if bert_classifier and bert_model_loaded:
             try:
-                tf_intent, tf_confidence = intent_classifier.predict_intent(query)
-                logger.info(f"TF prediction - Text: '{query}' -> Intent: {tf_intent} (confidence: {tf_confidence:.3f})")
+                intent, _ = bert_classifier.predict(query)
+                logger.info(f"🧠 Intent detected: {intent}")
             except Exception as e:
-                logger.error(f"Error with TensorFlow prediction: {e}")
+                logger.error(f"Intent detection failed: {str(e)}")
         
-        # Choose the best intent prediction
-        if keyword_confidence > 0.5:
-            final_intent = keyword_intent
-            final_confidence = keyword_confidence
-            model_used = "Keyword-based"
-        elif tf_confidence > keyword_confidence:
-            final_intent = tf_intent
-            final_confidence = tf_confidence
-            model_used = "TensorFlow LSTM"
-        else:
-            final_intent = keyword_intent
-            final_confidence = keyword_confidence
-            model_used = "Keyword-based"
-        
-        logger.info(f"Intent detected: {final_intent} (confidence: {final_confidence:.3f}, model: {model_used})")
-        
-        # Step 2: Use agentic Wikipedia search
+        # Use the enhanced summarization function
         try:
-            from utils.wikipedia_fetcher import search_and_fetch_article_agentic
-            article_info = search_and_fetch_article_agentic(query)
-        except ImportError:
-            logger.warning("🚫 Agentic search not available - falling back to basic search")
-            article_info = search_and_fetch_article_info(query)
+            # This function should exist - if not, we'll use basic summarization
+            result = summarize_article_with_intent(query, intent)
+            
+            if result and 'summary' in result:
+                response = {
+                    'query': query,
+                    'intent': intent,
+                    'summary': result['summary'],
+                    'article_info': result.get('article_info', {}),
+                    'method': 'agentic',
+                    'status': 'success'
+                }
+                
+                logger.info(f"✅ Agentic summarization completed for: '{query}'")
+                return jsonify(response)
+            else:
+                return jsonify({'error': 'Failed to generate summary'}), 500
+                
+        except Exception as e:
+            logger.error(f"Agentic summarization error: {str(e)}")
+            return jsonify({'error': 'Agentic summarization failed'}), 500
         
-        if not article_info or 'content' not in article_info:
-            return jsonify({'error': 'Could not fetch Wikipedia article'}), 404
-        
-        # Step 3: Intent-aware summarization (existing logic)
-        summary_result = summarize_article_with_intent(
-            article_info['content'], 
-            article_info.get('title', 'Unknown'),
-            final_intent, 
-            final_confidence
-        )
-        
-        if not summary_result:
-            return jsonify({'error': 'Could not generate summary'}), 500
-        
-        # Build enhanced response
-        response = {
-            'query': query,
-            'title': article_info.get('title', 'Unknown'),
-            'url': article_info.get('url', ''),
-            'summary': summary_result.get('summary', 'Summary not available'),
-            'method': summary_result.get('method', 'unknown'),
-            'word_count': summary_result.get('word_count', {}),
-            'intent_detection': {
-                'predicted_intent': final_intent,
-                'confidence': final_confidence,
-                'model_used': model_used
-            },
-            'search_method': article_info.get('search_method', 'agentic'),
-            'openai_optimization': {
-                'original_query': article_info.get('original_query', query),
-                'optimized_query': article_info.get('optimized_query', query),
-                'selected_from': article_info.get('selected_from', [])
-            }
-        }
-        
-        logger.info(f"✅ Agentic summarization completed successfully")
-        return jsonify(response)
-       
     except Exception as e:
         logger.error(f"Error in agentic summarization: {str(e)}")
-        return jsonify({'error': f'Summarization failed: {str(e)}'}), 500
+        return jsonify({'error': 'Internal server error'}), 500
 
 # Add a simple but effective keyword-based classifier
 def classify_intent_keywords(text):

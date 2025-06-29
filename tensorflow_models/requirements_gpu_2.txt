@@ -1,0 +1,10 @@
+# GPU-Accelerated BERT Training Requirements - STEP 2
+# Install this AFTER requirements_gpu_1.txt: pip install -r requirements_gpu_2.txt
+# This enables DirectML GPU acceleration for TensorFlow
+
+# DirectML Plugin (transforms tensorflow-cpu into GPU-accelerated version)
+tensorflow-directml-plugin
+
+# Wikipedia API modules for training data fetching
+wikipedia>=1.4.0
+wikipedia-api>=0.6.0 

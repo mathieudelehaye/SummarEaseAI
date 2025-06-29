@@ -61,6 +61,21 @@ class WikipediaPortalFetcher:
                 'portal_url': 'https://en.wikipedia.org/wiki/Portal:Biography',
                 'intent_label': 'Biography',
                 'subcategories': ['Politicians', 'Scientists', 'Artists', 'Musicians', 'Writers']
+            },
+            'Arts': {
+                'portal_url': 'https://en.wikipedia.org/wiki/Portal:Arts',
+                'intent_label': 'Arts',
+                'subcategories': ['Visual arts', 'Music', 'Literature', 'Theater', 'Film']
+            },
+            'Politics': {
+                'portal_url': 'https://en.wikipedia.org/wiki/Portal:Politics',
+                'intent_label': 'Politics',
+                'subcategories': ['Government', 'Elections', 'Political parties', 'International relations']
+            },
+            'Geography': {
+                'portal_url': 'https://en.wikipedia.org/wiki/Portal:Geography',
+                'intent_label': 'Geography',
+                'subcategories': ['Countries', 'Continents', 'Mountains', 'Rivers', 'Climate']
             }
         }
     

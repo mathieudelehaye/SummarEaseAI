@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Optional, Any
 from utils.wikipedia_fetcher import search_and_fetch_article_info, enhance_query_with_intent
 from backend.summarizer import summarize_article_with_intent
-from tensorflow_models.intent_classifier import get_intent_classifier
+from tensorflow_models.bert_gpu_classifier import get_gpu_classifier
 from utils.openai_query_generator import OpenAIQueryGenerator
 from utils.langchain_agents import WikipediaAgentSystem
 import wikipedia
@@ -71,7 +71,8 @@ class MultiSourceAgent:
     """
     
     def __init__(self, cost_mode: str = "BALANCED"):
-        self.intent_classifier = get_intent_classifier()
+        self.bert_classifier = get_gpu_classifier()
+        self.bert_model_loaded = self.bert_classifier.load_model()
         self.query_generator = OpenAIQueryGenerator()
         self.agent_system = WikipediaAgentSystem()  # Real LangChain agents
         
@@ -86,6 +87,7 @@ class MultiSourceAgent:
         
         logger.info(f"🎛️ Multi-Source Agent initialized in {cost_mode} mode")
         logger.info(f"📊 Limits: {self.limits['max_articles']} articles, {self.limits['max_secondary_queries']} secondary queries")
+        logger.info(f"🚀 GPU BERT model loaded: {self.bert_model_loaded}")
         
     def plan_search_strategy(self, query: str, intent: str, confidence: float) -> Dict[str, Any]:
         """
@@ -794,15 +796,24 @@ Final Comprehensive Summary:
         return sorted(articles, key=lambda x: float(x.get('relevance_score', 0)), reverse=True)
 
     def _analyze_intent(self, query: str) -> Dict[str, Any]:
-        """Analyze intent using the intent classifier."""
-        if self.intent_classifier:
-            intent, confidence = self.intent_classifier.predict_intent(query)
-        else:
-            intent, confidence = "General", 0.5
+        """Analyze query intent using GPU BERT classifier"""
+        # Try GPU BERT model first
+        if self.bert_classifier and self.bert_model_loaded:
+            try:
+                intent, confidence = self.bert_classifier.predict(query)
+                return {
+                    'intent': intent,
+                    'confidence': confidence,
+                    'method': 'gpu_bert'
+                }
+            except Exception as e:
+                logger.error(f"GPU BERT prediction failed: {str(e)}")
         
+        # Fallback to keyword-based
         return {
-            'intent': intent,
-            'confidence': confidence
+            'intent': 'General',
+            'confidence': 0.5,
+            'method': 'fallback'
         }
 
     def run_multi_source_search(self, query: str) -> Dict[str, Any]:
@@ -815,10 +826,9 @@ Final Comprehensive Summary:
         
         try:
             # Step 1: Intent Detection
-            if self.intent_classifier:
-                intent, confidence = self.intent_classifier.predict_intent(query)
-            else:
-                intent, confidence = "General", 0.5
+            intent_result = self._analyze_intent(query)
+            intent = intent_result['intent']
+            confidence = intent_result['confidence']
             
             logger.info(f"🎯 Detected intent: {intent} (confidence: {confidence:.3f})")
             

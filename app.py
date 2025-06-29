@@ -163,9 +163,9 @@ def semantic_search(query, max_results=5):
 
 def main():
     # Header
-    st.markdown('<h1 class="main-header">🤖 SummarEaseAI v2.0</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🤖 SummarEaseAI</h1>', unsafe_allow_html=True)
     st.markdown(
-        '<p style="text-align: center; font-size: 1.2rem; color: #666;">AI-Powered Wikipedia Summarization with <span class="hf-badge">🤗 Hugging Face</span> & <span class="tf-badge">TensorFlow</span></p>',
+        '<p style="text-align: center; font-size: 1.2rem; color: #666;">AI-Powered Wikipedia Summarization with <span class="tf-badge">TensorFlow</span> & DirectML</p>',
         unsafe_allow_html=True
     )
     
@@ -181,10 +181,10 @@ def main():
             api_status = get_api_status()
             if api_status and 'features' in api_status:
                 features = api_status['features']
-                st.info(f"🧠 TensorFlow: {'✅' if features.get('tensorflow_intent_model') else '❌'}")
-                st.info(f"🤗 BERT: {'✅' if features.get('bert_intent_model') else '❌'}")
-                st.info(f"🤗 HuggingFace: {'✅' if features.get('huggingface_summarization') else '❌'}")
-                st.info(f"🔍 Semantic Search: {'✅' if features.get('semantic_search') else '❌'}")
+                st.info(f"🧠 TensorFlow LSTM: {'✅' if features.get('tensorflow_model') else '❌'}")
+                st.info(f"🤗 HuggingFace: {'✅' if features.get('huggingface_features') else '❌'}")
+                st.info(f"📡 OpenAI: {'✅' if features.get('openai_summarization') else '❌'}")
+                st.info(f"🌍 Wikipedia: {'✅' if features.get('wikipedia_fetching') else '❌'}")
         else:
             st.error("❌ API is not responding")
             st.markdown("**To start the API:**")
@@ -213,26 +213,27 @@ def main():
         intent_model = st.radio(
             "Choose intent model:",
             ["TensorFlow LSTM", "🤗 BERT Transformer"],
-            help="Compare custom TensorFlow model vs pre-trained BERT."
+            help="Compare custom Wikipedia-trained TensorFlow model vs pre-trained BERT."
         )
         
         st.divider()
         
         # About
-        st.subheader("📖 About v2.0")
+        st.subheader("📖 About")
         st.markdown("""
-        **New Features:**
-        - 🤗 **Hugging Face Integration**
-        - 🔍 **Semantic Search** with embeddings
-        - 🧠 **BERT Intent Classification**
-        - 📊 **Model Comparison**
-        - 🚀 **Local AI Models**
+        **Features:**
+        - 🧠 **Wikipedia-trained TensorFlow LSTM**
+        - 🚀 **DirectML GPU Acceleration**
+        - 🌍 **Wikipedia Portal Integration**
+        - 📊 **Intent Classification**
+        - 🤖 **OpenAI Summarization**
         
         **Tech Stack:**
         - **Frontend**: Streamlit
         - **Backend**: Flask + CORS
-        - **AI/ML**: TensorFlow + 🤗 Transformers
-        - **NLP**: LangChain + OpenAI + Sentence Transformers
+        - **AI/ML**: TensorFlow + DirectML
+        - **NLP**: LangChain + OpenAI
+        - **Data**: Wikipedia API
         """)
     
     # Main content
@@ -344,7 +345,7 @@ def main():
     
     with tab2:
         st.header("Intent Classification Analysis")
-        st.markdown("Compare TensorFlow LSTM vs 🤗 BERT models for intent classification.")
+        st.markdown("Compare Wikipedia-trained TensorFlow LSTM vs 🤗 BERT models for intent classification.")
         
         # Model selection
         col1, col2 = st.columns([3, 1])
