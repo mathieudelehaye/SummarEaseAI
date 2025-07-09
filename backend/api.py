@@ -8,6 +8,12 @@ by avoiding problematic Hugging Face/transformers imports.
 
 import os
 import sys
+
+# Suppress TensorFlow logging before any imports that might load TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR messages
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 import logging
@@ -37,7 +43,10 @@ CORS(app)
 bert_classifier = get_gpu_classifier()
 
 # Try to load pre-trained BERT model
-bert_model_loaded = bert_classifier.load_model()
+if bert_classifier is not None:
+    bert_model_loaded = bert_classifier.load_model()
+else:
+    bert_model_loaded = False
 
 # Initialize TensorFlow LSTM Intent Classifier for new endpoint
 tf_intent_classifier = get_intent_classifier()
@@ -484,9 +493,11 @@ def classify_intent_keywords(text):
     }
     
     # Find best match
-    if max(scores.values()) > 0:
-        best_intent = max(scores, key=scores.get)
-        confidence = min(0.85, max(scores.values()) * 0.3)  # More realistic confidence
+    max_score = max(scores.values()) if scores.values() else 0
+    if max_score > 0:
+        # Find the intent with the highest score
+        best_intent = max(scores.keys(), key=lambda k: scores[k])
+        confidence = min(0.85, max_score * 0.3)  # More realistic confidence
     else:
         best_intent = "General"
         confidence = 0.5

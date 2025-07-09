@@ -7,6 +7,12 @@ Clean, focused backend for intent prediction using GPU-accelerated BERT model
 import os
 import sys
 import logging
+
+# Suppress TensorFlow logging before any imports that might load TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR messages
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime

@@ -12,9 +12,18 @@ from typing import List, Tuple, Dict, Optional
 import pickle
 from pathlib import Path
 
+# Suppress TensorFlow logging before importing TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR messages
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 # TensorFlow imports with error handling
 try:
     import tensorflow as tf
+    # Additional TensorFlow logging suppression
+    tf.get_logger().setLevel('ERROR')
+    tf.autograph.set_verbosity(0)
+    
     from sklearn.preprocessing import LabelEncoder
     from sklearn.model_selection import train_test_split
     TF_AVAILABLE = True

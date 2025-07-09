@@ -8,7 +8,17 @@ import logging
 import time
 from typing import List, Dict, Tuple, Optional
 import numpy as np
+
+# Suppress TensorFlow logging before importing TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR messages
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 import tensorflow as tf
+# Additional TensorFlow logging suppression
+tf.get_logger().setLevel('ERROR')
+tf.autograph.set_verbosity(0)
+
 from transformers import AutoTokenizer
 from pathlib import Path
 import json
@@ -412,13 +422,19 @@ class GPUBERTClassifier:
 # Global instance for SummarEaseAI integration
 _gpu_classifier = None
 
-def get_gpu_classifier() -> GPUBERTClassifier:
+def get_gpu_classifier() -> Optional[GPUBERTClassifier]:
     """Get global GPU classifier instance"""
     global _gpu_classifier
     if _gpu_classifier is None:
-        _gpu_classifier = GPUBERTClassifier()
-        if not _gpu_classifier.load_model():
-            logger.warning("⚠️  Failed to load GPU model, falling back to CPU")
+        try:
+            _gpu_classifier = GPUBERTClassifier()
+            if not _gpu_classifier.load_model():
+                logger.warning("⚠️  Failed to load GPU model, falling back to CPU")
+                _gpu_classifier = None
+                return None
+        except Exception as e:
+            logger.error(f"❌ Error initializing GPU classifier: {e}")
+            _gpu_classifier = None
             return None
     return _gpu_classifier
 
