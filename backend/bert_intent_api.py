@@ -21,7 +21,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import BERT GPU Classifier
-from tensorflow_models.bert_gpu_classifier import GPUBERTClassifier
+from tensorflow_models.bert_classifier import BERTClassifier
 
 # Configure logging
 logging.basicConfig(
@@ -36,7 +36,7 @@ CORS(app)  # Enable CORS for frontend integration
 
 # Initialize GPU BERT Intent Classifier
 logger.info("🚀 Initializing GPU BERT Intent Classifier...")
-bert_classifier = GPUBERTClassifier()
+bert_classifier = BERTClassifier(use_gpu_for_training=True)
 
 # Try to load the trained BERT model
 model_loaded = bert_classifier.load_model()

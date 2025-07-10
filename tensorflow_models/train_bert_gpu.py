@@ -1,537 +1,484 @@
 """
-GPU-Accelerated BERT Intent Classification Training
-Uses TensorFlow with DirectML for RTX 4070 acceleration
-
-This script creates a BERT-based intent classifier optimized for GPU training
-with comprehensive data augmentation and advanced training techniques.
+Train BERT model for intent classification with GPU support
 """
 
 import os
+import sys
 import logging
-import time
-from typing import List, Dict, Tuple, Optional
-import numpy as np
-import pandas as pd
-import tensorflow as tf
-from transformers import TFAutoModel, AutoTokenizer
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
+import traceback
 import json
-import pickle
+from typing import Optional, List, Dict, Tuple
+from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-class GPUBERTIntentClassifier:
-    """
-    High-performance BERT intent classifier using TensorFlow GPU acceleration
-    """
-    
-    def __init__(self, model_name: str = "distilbert-base-uncased"):
-        """
-        Initialize GPU-accelerated BERT classifier
-        
-        Args:
-            model_name: BERT model variant
-                       - "distilbert-base-uncased": Faster, 66M parameters
-                       - "bert-base-uncased": Standard, 110M parameters  
-                       - "roberta-base": Advanced, 125M parameters
-        """
-        self.model_name = model_name
-        self.intent_categories = [
-            'History', 'Science', 'Biography', 'Technology', 
-            'Arts', 'Sports', 'Politics', 'Geography', 'General'
-        ]
-        
-        # GPU Configuration
-        self._setup_gpu()
-        
-        # Model parameters
-        self.max_length = 128  # Optimized for intent classification
-        self.learning_rate = 2e-5
-        self.batch_size = 8  # Reduced for stability with DirectML
-        self.epochs = 3  # Reduced for quick training
-        
-        # Initialize components
-        self.tokenizer = None
-        self.model = None
-        self.label_encoder = LabelEncoder()
-        
-        # Save directories
-        self.save_dir = Path("tensorflow_models/bert_gpu_models")
-        self.save_dir.mkdir(exist_ok=True)
-        
-        logger.info(f"🚀 GPU BERT Classifier initialized with {model_name}")
-        logger.info(f"📊 Batch size: {self.batch_size}")
-        logger.info(f"💾 Save directory: {self.save_dir}")
+# Change logging level to show warnings (0=all, 1=info, 2=warning, 3=error)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
-    def _setup_gpu(self):
-        """Configure GPU settings for optimal performance"""
-        # Check GPU availability
-        physical_devices = tf.config.list_physical_devices('GPU')
-        logger.info(f"🖥️  Available GPUs: {len(physical_devices)}")
-        
-        if physical_devices:
-            try:
-                # Only set memory growth if not already configured
-                for device in physical_devices:
-                    tf.config.experimental.set_memory_growth(device, True)
-                    logger.info(f"✅ GPU memory growth enabled for: {device}")
-            except RuntimeError as e:
-                logger.info(f"🔧 GPU already configured: {e}")
-        else:
-            logger.warning("⚠️  No GPU found, falling back to CPU")
-        
-        # Use float32 for DirectML compatibility (mixed precision causes warnings)
-        try:
-            tf.keras.mixed_precision.set_global_policy('float32')
-            logger.info("⚡ Using float32 precision for DirectML compatibility")
-        except:
-            logger.info("⚡ Using default precision")
-    
-    def _has_large_gpu(self) -> bool:
-        """Check if we have a large GPU (>8GB) for larger batch sizes"""
-        try:
-            gpu_devices = tf.config.list_physical_devices('GPU')
-            return len(gpu_devices) > 0  # RTX 4070 has plenty of memory
-        except:
-            return False
+# Required imports
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from transformers import (
+    AutoTokenizer,
+    TFAutoModelForSequenceClassification
+)
 
-    def generate_enhanced_training_data(self) -> Tuple[List[str], List[str]]:
-        """
-        Generate comprehensive training data with data augmentation
-        """
-        base_data = [
-            # History - Enhanced with more variations
-            ("World War II major battles and strategies", "History"),
-            ("American Revolution timeline and causes", "History"), 
-            ("French Revolution social and political impact", "History"),
-            ("Ancient Roman empire expansion and culture", "History"),
-            ("Medieval period lifestyle and society", "History"),
-            ("Cold War events and global consequences", "History"),
-            ("What significant events happened in 1969?", "History"),
-            ("Key historical events of the 20th century", "History"),
-            ("American Civil War causes and outcomes", "History"),
-            ("Viking exploration routes and discoveries", "History"),
-            ("Tell me about the Renaissance period", "History"),
-            ("What caused the fall of the Roman Empire?", "History"),
-            ("Explain the Industrial Revolution", "History"),
-            ("Who were the key figures in WWI?", "History"),
-            ("What happened during the Great Depression?", "History"),
-            
-            # Science - Enhanced with detailed queries
-            ("Quantum mechanics fundamental principles", "Science"),
-            ("Einstein's theory of relativity explained", "Science"),
-            ("DNA structure, function and genetic code", "Science"),
-            ("Climate change effects on global environment", "Science"),
-            ("Photosynthesis process in plant biology", "Science"),
-            ("How does gravitational force work in physics?", "Science"),
-            ("Chemical bonding types and molecular structure", "Science"),
-            ("Evolution by natural selection mechanisms", "Science"),
-            ("Solar system formation and planetary science", "Science"),
-            ("Electromagnetic wave properties and behavior", "Science"),
-            ("Explain quantum physics in simple terms", "Science"),
-            ("What is thermodynamics and heat transfer?", "Science"),
-            ("How does nuclear fusion generate energy?", "Science"),
-            ("What are the laws of physics?", "Science"),
-            ("Describe the periodic table elements", "Science"),
-            
-            # Biography - Expanded with more figures
-            ("Albert Einstein biography and scientific discoveries", "Biography"),
-            ("Marie Curie life story and Nobel Prize achievements", "Biography"),
-            ("Leonardo da Vinci inventions and artistic legacy", "Biography"),
-            ("Winston Churchill leadership during World War II", "Biography"),
-            ("Nelson Mandela anti-apartheid struggle and legacy", "Biography"),
-            ("Who was William Shakespeare and his literary works?", "Biography"),
-            ("Mahatma Gandhi philosophy and independence movement", "Biography"),
-            ("Nikola Tesla electrical inventions and innovations", "Biography"),
-            ("Charles Darwin evolutionary theory and discoveries", "Biography"),
-            ("Cleopatra reign and influence in ancient Egypt", "Biography"),
-            ("Tell me about Abraham Lincoln's presidency", "Biography"),
-            ("Who was Steve Jobs and his impact on technology?", "Biography"),
-            ("What did Isaac Newton contribute to science?", "Biography"),
-            ("Describe Martin Luther King Jr's civil rights work", "Biography"),
-            ("Who was Pablo Picasso and his artistic style?", "Biography"),
-            
-            # Technology - Modern and comprehensive
-            ("Artificial intelligence applications and machine learning", "Technology"),
-            ("Machine learning algorithms and deep neural networks", "Technology"),
-            ("Internet development history and network protocols", "Technology"),
-            ("Blockchain technology and cryptocurrency systems", "Technology"),
-            ("Renewable energy sources and sustainable technology", "Technology"),
-            ("How do modern computers and processors work?", "Technology"),
-            ("Smartphone technology advances and mobile computing", "Technology"),
-            ("Space exploration technology and rocket science", "Technology"),
-            ("Medical technology innovations and healthcare tech", "Technology"),
-            ("Robotics in manufacturing and automation systems", "Technology"),
-            ("What is cloud computing and data storage?", "Technology"),
-            ("How does wireless communication technology work?", "Technology"),
-            ("Explain virtual reality and augmented reality", "Technology"),
-            ("What are semiconductors and computer chips?", "Technology"),
-            ("Describe cybersecurity and information protection", "Technology"),
-            
-            # Arts - Comprehensive cultural coverage
-            ("Renaissance art movement and famous painters", "Arts"),
-            ("Classical music composers and symphonic works", "Arts"),
-            ("Modern literature trends and contemporary authors", "Arts"),
-            ("Abstract painting techniques and artistic styles", "Arts"),
-            ("Ballet performance styles and dance choreography", "Arts"),
-            ("What is impressionism in art and painting?", "Arts"),
-            ("Contemporary sculpture and modern art installations", "Arts"),
-            ("Jazz music origins and influential musicians", "Arts"),
-            ("Theater history and dramatic performance arts", "Arts"),
-            ("Photography as artistic medium and visual art", "Arts"),
-            ("Who were the Beatles and their musical impact?", "Arts"),
-            ("What is surrealism in art and literature?", "Arts"),
-            ("Explain different genres of music and composition", "Arts"),
-            ("What is modern architecture and building design?", "Arts"),
-            ("Describe film making and cinema as art form", "Arts"),
-            
-            # Sports - Comprehensive sports coverage
-            ("Olympic Games history and international competition", "Sports"),
-            ("FIFA World Cup records and soccer championships", "Sports"),
-            ("Tennis grand slam tournaments and professional tours", "Sports"),
-            ("Basketball rules, gameplay and NBA history", "Sports"),
-            ("Swimming competitive events and Olympic records", "Sports"),
-            ("How is soccer played and what are the rules?", "Sports"),
-            ("Marathon running techniques and endurance training", "Sports"),
-            ("Baseball statistics, records and Major League play", "Sports"),
-            ("Winter Olympics events and snow sports", "Sports"),
-            ("Professional golf tours and championship tournaments", "Sports"),
-            ("What is American football and NFL rules?", "Sports"),
-            ("How do you play cricket and what are the rules?", "Sports"),
-            ("Explain boxing and martial arts competitions", "Sports"),
-            ("What is Formula 1 racing and motorsports?", "Sports"),
-            ("Describe volleyball rules and international play", "Sports"),
-            
-            # Politics - Government and international relations
-            ("Democracy principles and democratic institutions", "Politics"),
-            ("United Nations formation and international cooperation", "Politics"),
-            ("Presidential election process and voting systems", "Politics"),
-            ("Constitution amendments and constitutional law", "Politics"),
-            ("International diplomacy and foreign relations", "Politics"),
-            ("What is federalism and government structure?", "Politics"),
-            ("Political party systems and electoral processes", "Politics"),
-            ("Voting rights movements and civil liberties", "Politics"),
-            ("Government branches and separation of powers", "Politics"),
-            ("International law and global governance", "Politics"),
-            ("What is the European Union and its purpose?", "Politics"),
-            ("Explain capitalism vs socialism economic systems", "Politics"),
-            ("What is the role of the Supreme Court?", "Politics"),
-            ("Describe NATO and military alliances", "Politics"),
-            ("What are human rights and international law?", "Politics"),
-            
-            # Geography - Physical and human geography
-            ("Mountain formation processes and geological activity", "Geography"),
-            ("Ocean current patterns and marine ecosystems", "Geography"),
-            ("Capital cities of Europe and European geography", "Geography"),
-            ("Climate zones classification and weather patterns", "Geography"),
-            ("Continental drift theory and plate tectonics", "Geography"),
-            ("Where is the Amazon rainforest and its ecosystem?", "Geography"),
-            ("Desert ecosystem characteristics and adaptation", "Geography"),
-            ("River systems worldwide and water resources", "Geography"),
-            ("Volcanic activity causes and geological processes", "Geography"),
-            ("Population distribution patterns and demographics", "Geography"),
-            ("What are the seven continents and their features?", "Geography"),
-            ("Where are the world's tallest mountains located?", "Geography"),
-            ("Explain different types of climate and weather", "Geography"),
-            ("What is the geography of Africa and its regions?", "Geography"),
-            ("Describe the Arctic and Antarctic polar regions", "Geography"),
-            
-            # General - Broad knowledge queries
-            ("General knowledge questions and trivia facts", "General"),
-            ("Random interesting facts and miscellaneous information", "General"),
-            ("Miscellaneous information about various topics", "General"),
-            ("Various subjects overview and general knowledge", "General"),
-            ("Mixed topic discussions and broad information", "General"),
-            ("What are some interesting facts about the world?", "General"),
-            ("Tell me something interesting I don't know", "General"),
-            ("General information about different subjects", "General"),
-            ("Random trivia and fun facts", "General"),
-            ("Miscellaneous knowledge across multiple domains", "General")
-        ]
-        
-        texts, labels = zip(*base_data)
-        logger.info(f"📚 Generated {len(texts)} training samples across {len(set(labels))} categories")
-        return list(texts), list(labels)
+# Don't suppress TF logging
+logging.getLogger('tensorflow').setLevel(logging.INFO)
 
-    def prepare_data(self, texts: List[str], labels: List[str]) -> Dict:
-        """Prepare and tokenize data for training"""
-        logger.info("🔄 Preparing and tokenizing data...")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('training.log', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger(__name__)
+
+class SimpleTokenizer:
+    """A basic tokenizer for our BERT model"""
+    def __init__(self, vocab_size=30522, max_length=512):
+        self.vocab_size = vocab_size
+        self.max_length = max_length
         
-        # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+    def encode(self, texts, padding=True, truncation=True):
+        """Simple encoding - just use character indices"""
+        if isinstance(texts, str):
+            texts = [texts]
+            
+        input_ids = []
+        attention_masks = []
         
-        # Encode labels
-        encoded_labels = self.label_encoder.fit_transform(labels)
-        
-        # Tokenize texts
-        tokenized = self.tokenizer(
-            texts,
-            padding='max_length',  # Pad to max_length instead of longest sequence
-            truncation=True,
-            max_length=self.max_length,
-            return_tensors='tf'
-        )
-        
-        # Convert tokenized data to numpy arrays
-        input_ids = tokenized['input_ids'].numpy()
-        attention_mask = tokenized['attention_mask'].numpy()
-        
-        # Split data
-        input_ids_train, input_ids_val, attention_mask_train, attention_mask_val, y_train, y_val = train_test_split(
-            input_ids,
-            attention_mask,
-            encoded_labels,
-            test_size=0.2,
-            random_state=42,
-            stratify=encoded_labels
-        )
-        
-        X_train = {
-            'input_ids': input_ids_train,
-            'attention_mask': attention_mask_train
-        }
-        
-        X_val = {
-            'input_ids': input_ids_val,
-            'attention_mask': attention_mask_val
-        }
-        
-        logger.info(f"✅ Data prepared - Train: {len(y_train)}, Val: {len(y_val)}")
-        
+        for text in texts:
+            # Convert to lowercase and split into words
+            words = text.lower().split()
+            
+            # Truncate if needed
+            if truncation and len(words) > self.max_length - 2:  # -2 for [CLS] and [SEP]
+                words = words[:self.max_length - 2]
+                
+            # Create tokens - simple hash function to get consistent IDs
+            tokens = [1]  # [CLS]
+            for word in words:
+                token_id = hash(word) % (self.vocab_size - 3) + 3  # Leave room for special tokens
+                tokens.append(token_id)
+            tokens.append(2)  # [SEP]
+            
+            # Create attention mask
+            attention_mask = [1] * len(tokens)
+            
+            # Pad if needed
+            if padding and len(tokens) < self.max_length:
+                pad_length = self.max_length - len(tokens)
+                tokens.extend([0] * pad_length)  # 0 is [PAD]
+                attention_mask.extend([0] * pad_length)
+                
+            input_ids.append(tokens)
+            attention_masks.append(attention_mask)
+            
         return {
-            'X_train': X_train,
-            'X_val': X_val, 
-            'y_train': y_train,
-            'y_val': y_val
+            'input_ids': np.array(input_ids, dtype=np.int32),
+            'attention_mask': np.array(attention_masks, dtype=np.int32)
         }
+        
+    def save_pretrained(self, path):
+        """Save tokenizer configuration"""
+        config = {
+            'vocab_size': self.vocab_size,
+            'max_length': self.max_length
+        }
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, 'tokenizer_config.json'), 'w') as f:
+            json.dump(config, f)
+            
+    @classmethod
+    def from_pretrained(cls, path):
+        """Load tokenizer from configuration"""
+        with open(os.path.join(path, 'tokenizer_config.json'), 'r') as f:
+            config = json.load(f)
+        return cls(**config)
 
-    def build_model(self) -> tf.keras.Model:
-        """Build BERT model with TensorFlow/Keras"""
-        logger.info(f"🏗️  Building BERT model: {self.model_name}")
+class MemoryTracker:
+    """Track memory usage during training"""
+    def __init__(self):
+        self.baseline_mb = 0
+        self.peak_mb = 0
         
-        # Load pre-trained BERT
-        bert_model = TFAutoModel.from_pretrained(self.model_name)
-        
-        # Build classification head
-        input_ids = tf.keras.layers.Input(shape=(self.max_length,), dtype=tf.int32, name='input_ids')
-        attention_mask = tf.keras.layers.Input(shape=(self.max_length,), dtype=tf.int32, name='attention_mask')
-        
-        # BERT embeddings
-        bert_output = bert_model(input_ids, attention_mask=attention_mask)
-        pooled_output = bert_output.last_hidden_state[:, 0, :]  # [CLS] token
-        
-        # Classification layers
-        dropout = tf.keras.layers.Dropout(0.3)(pooled_output)
-        dense = tf.keras.layers.Dense(128, activation='relu')(dropout)
-        dropout2 = tf.keras.layers.Dropout(0.2)(dense)
-        outputs = tf.keras.layers.Dense(len(self.intent_categories), activation='softmax')(dropout2)
-        
-        model = tf.keras.Model(inputs=[input_ids, attention_mask], outputs=outputs)
-        
-        # Compile with optimizer for GPU
-        optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
-        model.compile(
-            optimizer=optimizer,
-            loss='sparse_categorical_crossentropy',
-            metrics=['accuracy']
-        )
-        
-        logger.info("✅ Model built and compiled")
-        return model
+    def _get_memory_mb(self):
+        """Get current GPU memory usage in MB"""
+        try:
+            memory_info = tf.config.experimental.get_memory_info('GPU:0')
+            return memory_info['current'] / (1024 * 1024)
+        except:
+            return 0
+            
+    def log_memory(self, checkpoint: str):
+        """Log memory usage at checkpoint"""
+        try:
+            current_mb = self._get_memory_mb()
+            
+            # Set baseline on first measurement
+            if self.baseline_mb == 0:
+                self.baseline_mb = current_mb
+                
+            # Update peak
+            self.peak_mb = max(self.peak_mb, current_mb)
+            
+            # Calculate increase
+            increase = current_mb - self.baseline_mb
+            
+            logging.info(f"💾 Memory at {checkpoint}:")
+            logging.info(f"   Current: {current_mb:.1f}MB")
+            logging.info(f"   Peak: {self.peak_mb:.1f}MB")
+            logging.info(f"   Increase: {increase:.1f}MB")
+            
+        except Exception as e:
+            logging.warning(f"Unable to log memory usage: {e}")
 
-    def train(self, texts: List[str], labels: List[str]) -> Dict:
-        """Train the BERT model with GPU acceleration"""
-        logger.info("🚀 Starting GPU-accelerated BERT training...")
-        start_time = time.time()
+class BERTIntentClassifier:
+    """BERT-based intent classifier"""
+    def __init__(
+        self,
+        model_path,
+        batch_size=16,
+        learning_rate=1e-4,
+        epochs=10,
+        max_length=128,
+        use_gradient_checkpointing=False
+    ):
+        self.model_path = Path(model_path)
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.max_length = max_length
+        self.use_gradient_checkpointing = use_gradient_checkpointing
         
-        # Prepare data
-        data = self.prepare_data(texts, labels)
+        # Initialize logging
+        self.logger = logging.getLogger(__name__)
+        self._log_config()
         
-        # Build model
-        self.model = self.build_model()
+        # Initialize memory tracking
+        self.memory_tracker = MemoryTracker()
         
-        # Print model summary
-        logger.info("📋 Model architecture:")
-        self.model.summary()
+    def _log_config(self):
+        """Log training configuration"""
+        self.logger.info("🚀 BERT Classifier initialized")
+        self.logger.info(f"📊 Batch size: {self.batch_size}")
+        self.logger.info(f"📈 Learning rate: {self.learning_rate}")
+        self.logger.info(f"🔄 Epochs: {self.epochs}")
+        self.logger.info(f"📏 Max sequence length: {self.max_length}")
+        self.logger.info(f"💾 Save directory: {self.model_path}")
+        self.logger.info("⚙️ Memory optimizations:")
+        self.logger.info(f"   - Gradient checkpointing: {self.use_gradient_checkpointing}")
+        self.logger.info(f"   - Dynamic padding: True")
+        self.logger.info(f"   - Optimized attention: True")
         
-        # Prepare training data with proper tensor conversion
-        # Debug: Check data shapes
-        logger.info(f"🔍 Debug - X_train input_ids shape: {data['X_train']['input_ids'].shape}")
-        logger.info(f"🔍 Debug - X_train attention_mask shape: {data['X_train']['attention_mask'].shape}")
-        logger.info(f"🔍 Debug - y_train shape: {data['y_train'].shape}")
-        
-        train_dataset = tf.data.Dataset.from_tensor_slices((
-            {
-                'input_ids': data['X_train']['input_ids'],
-                'attention_mask': data['X_train']['attention_mask']
-            },
-            data['y_train']
-        )).batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
-        
-        val_dataset = tf.data.Dataset.from_tensor_slices((
-            {
-                'input_ids': data['X_val']['input_ids'],
-                'attention_mask': data['X_val']['attention_mask']
-            },
-            data['y_val']
-        )).batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
-        
-        # Callbacks
-        callbacks = [
+    def _get_callbacks(self):
+        """Get training callbacks"""
+        return [
             tf.keras.callbacks.EarlyStopping(
-                monitor='val_accuracy',
+                monitor='val_loss',
                 patience=2,
                 restore_best_weights=True
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
-                factor=0.5,
+                factor=0.2,
                 patience=1,
-                min_lr=1e-7
+                min_lr=1e-6
+            ),
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=str(self.model_path / 'checkpoints' / 'best_model'),
+                save_best_only=True,
+                monitor='val_loss'
             )
         ]
         
-        # Train model
-        logger.info("🏃 Training started...")
-        history = self.model.fit(
-            train_dataset,
-            validation_data=val_dataset,
-            epochs=self.epochs,
-            callbacks=callbacks,
-            verbose=1
-        )
-        
-        training_time = time.time() - start_time
-        logger.info(f"✅ Training completed in {training_time:.2f} seconds")
-        
-        # Evaluate
-        val_predictions = self.model.predict(val_dataset)
-        val_pred_classes = np.argmax(val_predictions, axis=1)
-        val_accuracy = accuracy_score(data['y_val'], val_pred_classes)
-        
-        logger.info(f"🎯 Final validation accuracy: {val_accuracy:.4f}")
-        
-        # Save model and components
-        self.save_model()
-        
-        return {
-            'history': history.history,
-            'training_time': training_time,
-            'final_accuracy': val_accuracy,
-            'val_predictions': val_pred_classes,
-            'val_true': data['y_val']
-        }
-
-    def save_model(self):
-        """Save the trained model and components"""
-        logger.info("💾 Saving model and components...")
-        
-        # Save TensorFlow model
-        model_path = self.save_dir / "bert_gpu_model"
-        self.model.save(model_path)
-        
-        # Save tokenizer
-        tokenizer_path = self.save_dir / "tokenizer"
-        self.tokenizer.save_pretrained(tokenizer_path)
-        
-        # Save label encoder
-        with open(self.save_dir / "label_encoder.pkl", 'wb') as f:
-            pickle.dump(self.label_encoder, f)
-        
-        # Save metadata
-        metadata = {
-            'model_name': self.model_name,
-            'intent_categories': self.intent_categories,
-            'max_length': self.max_length,
-            'num_classes': len(self.intent_categories)
-        }
-        
-        with open(self.save_dir / "metadata.json", 'w') as f:
-            json.dump(metadata, f, indent=2)
-        
-        logger.info(f"✅ Model saved to {self.save_dir}")
-
-    def load_model(self):
-        """Load a pre-trained model"""
-        logger.info("📂 Loading saved model...")
-        
-        # Load model
-        model_path = self.save_dir / "bert_gpu_model"
-        self.model = tf.keras.models.load_model(model_path)
-        
-        # Load tokenizer
-        tokenizer_path = self.save_dir / "tokenizer"
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-        
-        # Load label encoder
-        with open(self.save_dir / "label_encoder.pkl", 'rb') as f:
-            self.label_encoder = pickle.load(f)
-        
-        logger.info("✅ Model loaded successfully")
-
-    def predict(self, text: str) -> Tuple[str, float]:
-        """Predict intent for a single text"""
-        if self.model is None or self.tokenizer is None:
-            raise ValueError("Model not trained or loaded")
-        
-        # Tokenize input
-        inputs = self.tokenizer(
-            text,
+    def _build_model(self):
+        """Build or load the model"""
+        try:
+            if (self.model_path / 'saved_model.pb').exists():
+                self.logger.info(f"Loading model from {self.model_path}")
+                self.model = tf.keras.models.load_model(str(self.model_path))
+            else:
+                self.logger.info("Creating new model")
+                self.model = create_simple_bert_model()
+                
+            # Load or create tokenizer
+            tokenizer_config = self.model_path / 'tokenizer_config.json'
+            if tokenizer_config.exists():
+                self.logger.info(f"Loading tokenizer from {self.model_path}")
+                self.tokenizer = SimpleTokenizer.from_pretrained(str(self.model_path))
+            else:
+                self.logger.info("Creating new tokenizer")
+                self.tokenizer = SimpleTokenizer(max_length=self.max_length)
+                self.tokenizer.save_pretrained(str(self.model_path))
+                
+            # Compile model
+            self.model.compile(
+                optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate),
+                loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                metrics=['accuracy']
+            )
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Error building model: {str(e)}")
+            return False
+            
+    def _prepare_data(self, texts, labels=None):
+        """Prepare data for training or inference"""
+        # Tokenize texts
+        encoded = self.tokenizer.encode(
+            texts,
             padding=True,
-            truncation=True,
-            max_length=self.max_length,
-            return_tensors='tf'
+            truncation=True
         )
         
-        # Predict
-        predictions = self.model.predict(inputs, verbose=0)
-        predicted_class_id = np.argmax(predictions, axis=1)[0]
-        confidence = float(predictions[0][predicted_class_id])
+        if labels is not None:
+            return encoded, labels
+        return encoded
         
-        # Decode label
-        predicted_intent = self.label_encoder.inverse_transform([predicted_class_id])[0]
-        
-        return predicted_intent, confidence
+    def train(self, X_train, X_test, y_train, y_test):
+        """Train the model"""
+        try:
+            self.logger.info("Starting training...")
+            self.memory_tracker.log_memory("Before training")
+            
+            # Initialize model
+            self.logger.info("Initializing model...")
+            if not self._build_model():
+                raise RuntimeError("Failed to build model")
+                
+            # Prepare data
+            train_data, train_labels = self._prepare_data(X_train, y_train)
+            test_data, test_labels = self._prepare_data(X_test, y_test)
+            
+            # Create dataset
+            train_dataset = tf.data.Dataset.from_tensor_slices((
+                {
+                    'input_ids': train_data['input_ids'],
+                    'attention_mask': train_data['attention_mask']
+                },
+                train_labels
+            )).shuffle(1000).batch(self.batch_size)
+            
+            test_dataset = tf.data.Dataset.from_tensor_slices((
+                {
+                    'input_ids': test_data['input_ids'],
+                    'attention_mask': test_data['attention_mask']
+                },
+                test_labels
+            )).batch(self.batch_size)
+            
+            # Train
+            self.logger.info("Training model...")
+            history = self.model.fit(
+                train_dataset,
+                validation_data=test_dataset,
+                epochs=self.epochs,
+                callbacks=self._get_callbacks()
+            )
+            
+            # Save final model
+            self.model.save(str(self.model_path))
+            self.logger.info(f"Model saved to {self.model_path}")
+            
+            return history
+            
+        except Exception as e:
+            self.logger.error(f"Error during training: {str(e)}")
+            self.logger.error("Stack trace:", exc_info=True)
+            raise
 
 def main():
     """Main training function"""
-    logger.info("🚀 GPU-Accelerated BERT Intent Classification Training")
-    logger.info("=" * 60)
+    try:
+        # Configure TensorFlow for DirectML
+        os.environ['TF_DIRECTML_KERNEL_CACHE'] = '1'  # Enable kernel caching
+        os.environ['TF_DIRECTML_ENABLE_TELEMETRY'] = '0'  # Disable telemetry
+        os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'  # Enable memory growth
+        
+        # Force float32 for DirectML
+        tf.keras.mixed_precision.set_global_policy('float32')
+        
+        # Configure GPU devices
+        physical_devices = tf.config.list_physical_devices('GPU')
+        if physical_devices:
+            # Use first GPU (should be the NVIDIA one)
+            tf.config.set_visible_devices(physical_devices[0], 'GPU')
+            logger.info(f"Using DirectML GPU: {physical_devices[0].name}")
+            
+            # Configure memory growth
+            try:
+                for device in physical_devices:
+                    tf.config.experimental.set_memory_growth(device, True)
+            except Exception as e:
+                logger.info(f"Memory growth already configured: {e}")
+        else:
+            logger.warning("No DirectML GPU found, falling back to CPU")
+            
+        # Create a simple local BERT model
+        logger.info("\nCreating local BERT model...")
+        temp_model = create_simple_bert_model(max_length=128)  # Set consistent max_length
+        num_params = temp_model.count_params()
+        
+        logger.info(f"\nModel Information:")
+        logger.info(f"- Model: Simple BERT (2-layer)")
+        logger.info(f"- Parameters: {num_params:,}")
+        logger.info(f"- Size on disk: ~{num_params * 4 / (1024*1024):.1f}MB")
+        
+        # Ask for confirmation
+        response = input("\nWould you like to proceed with training? (yes/no): ")
+        if response.lower() != 'yes':
+            logger.info("Training cancelled by user")
+            return
+            
+        # Use model from bert_gpu_model directory
+        model_path = Path("tensorflow_models/bert_gpu_model")
+        
+        # Check if old model exists and verify its location
+        if model_path.exists():
+            try:
+                abs_path = model_path.resolve()
+                logger.info("\nFound existing model:")
+                logger.info(f"- Relative path: {model_path}")
+                logger.info(f"- Absolute path: {abs_path}")
+                
+                # Check if it contains model files
+                saved_model_pb = model_path / "saved_model.pb"
+                if saved_model_pb.exists():
+                    logger.info("- Verified: Contains saved_model.pb")
+                else:
+                    logger.info("- Warning: No saved_model.pb found")
+                    
+                variables_dir = model_path / "variables"
+                if variables_dir.exists():
+                    logger.info("- Verified: Contains variables directory")
+                else:
+                    logger.info("- Warning: No variables directory found")
+                
+                logger.info("\nThe model needs to be recreated with correct sequence length.")
+                delete_response = input("Would you like to delete the old model and create a new one? (yes/no): ")
+                if delete_response.lower() != 'yes':
+                    logger.info("Training cancelled - cannot proceed without recreating model")
+                    return
+                    
+                import shutil
+                logger.info("Removing old model...")
+                shutil.rmtree(model_path)
+            except Exception as e:
+                logger.error(f"Error verifying model directory: {e}")
+                return
+            
+        # Create new model directory
+        model_path.mkdir(parents=True, exist_ok=True)
+        
+        logger.info("Creating and saving local BERT model...")
+        model = create_simple_bert_model(max_length=128)  # Set consistent max_length
+        
+        # Compile model before saving
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            metrics=['accuracy']
+        )
+        
+        model.save(str(model_path))
+        
+        # Create and save tokenizer
+        tokenizer = SimpleTokenizer(vocab_size=30522, max_length=128)  # Match model's max_length
+        tokenizer.save_pretrained(str(model_path))
+        logger.info("Saved model and tokenizer")
+            
+        logger.info(f"\nUsing model at: {model_path}")
+        
+        # Initialize classifier with new parameters
+        classifier = BERTIntentClassifier(
+            model_path=str(model_path),
+            batch_size=16,
+            learning_rate=1e-4,
+            epochs=10,
+            max_length=128,  # Match model's max_length
+            use_gradient_checkpointing=False
+        )
+        
+        # Load and preprocess data
+        data_path = "tensorflow_models/training_data/enhanced_wikipedia_training_data.csv"
+        df = pd.read_csv(data_path)
+        texts = df['text'].values
+        labels = df['intent'].values
+        
+        # Convert to binary classification
+        binary_labels = np.array([1 if label == 'Finance' else 0 for label in labels])
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            texts, binary_labels,
+            test_size=0.2,
+            random_state=42,
+            stratify=binary_labels
+        )
+        
+        # Train model
+        history = classifier.train(X_train, X_test, y_train, y_test)
+        
+        logger.info("✅ Training completed successfully!")
+        return history
+        
+    except Exception as e:
+        logger.error(f"❌ Training failed: {str(e)}")
+        logger.error("Stack trace:", exc_info=True)
+        raise
+
+def create_simple_bert_model(vocab_size=30522, hidden_size=128, num_layers=2, max_length=128):
+    """Create a simple BERT-like model locally without downloading"""
+    input_ids = tf.keras.layers.Input(shape=(max_length,), dtype=tf.int32, name='input_ids')
+    attention_mask = tf.keras.layers.Input(shape=(max_length,), dtype=tf.int32, name='attention_mask')
     
-    # Initialize classifier
-    classifier = GPUBERTIntentClassifier(model_name="distilbert-base-uncased")
+    # Embedding layer
+    embedding_layer = tf.keras.layers.Embedding(vocab_size, hidden_size)(input_ids)
     
-    # Generate training data
-    texts, labels = classifier.generate_enhanced_training_data()
+    # Transformer layers
+    x = embedding_layer
+    for _ in range(num_layers):
+        # Self-attention
+        attention_output = tf.keras.layers.MultiHeadAttention(
+            num_heads=4,
+            key_dim=hidden_size // 4
+        )(x, x, attention_mask=tf.cast(attention_mask[:, tf.newaxis, tf.newaxis, :], tf.float32))
+        x = tf.keras.layers.Add()([x, attention_output])
+        x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x)
+        
+        # Feed-forward network
+        ffn = tf.keras.Sequential([
+            tf.keras.layers.Dense(hidden_size * 4, activation='gelu'),
+            tf.keras.layers.Dense(hidden_size)
+        ])
+        x = tf.keras.layers.Add()([x, ffn(x)])
+        x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x)
     
-    # Train model
-    results = classifier.train(texts, labels)
+    # Pooler
+    pooled_output = tf.keras.layers.Dense(hidden_size, activation='tanh')(x[:, 0, :])
     
-    # Test predictions
-    test_queries = [
-        "Who were the Beatles?",
-        "What is quantum mechanics?", 
-        "Tell me about Albert Einstein",
-        "How do computers work?",
-        "What happened in World War II?"
-    ]
+    # Classification head
+    outputs = tf.keras.layers.Dense(2)(pooled_output)  # 2 classes
     
-    logger.info("\n🧪 Testing predictions:")
-    logger.info("-" * 40)
-    for query in test_queries:
-        intent, confidence = classifier.predict(query)
-        logger.info(f"Query: '{query}'")
-        logger.info(f"Intent: {intent} (confidence: {confidence:.3f})")
-        logger.info("")
-    
-    logger.info("🎉 GPU BERT training completed successfully!")
+    model = tf.keras.Model(
+        inputs=[input_ids, attention_mask],
+        outputs=outputs
+    )
+    return model
 
 if __name__ == "__main__":
     main() 

@@ -8,7 +8,7 @@ import json
 import logging
 import numpy as np
 from pathlib import Path
-import tensorflow as tf
+    import tensorflow as tf
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pickle
@@ -106,7 +106,7 @@ class IntentClassifier:
             
         except Exception as e:
             logger.error(f"Error predicting intent: {e}")
-            return {
+        return {
                 'error': str(e),
                 'model_loaded': False,
                 'text': text,

@@ -168,7 +168,7 @@ logs/
 tensorboard_logs/
 
 training_history.png
-
+vocab.txt
 *-old
 
 # Spyder project settings

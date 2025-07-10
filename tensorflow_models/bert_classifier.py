@@ -100,6 +100,7 @@ class BERTClassifier:
             
             # Load metadata
             metadata_path = self.model_dir / "metadata.json"
+            logger.info(f"Looking for metadata at: {metadata_path}")
             if metadata_path.exists():
                 with open(metadata_path, 'r') as f:
                     self.metadata = json.load(f)
@@ -108,10 +109,11 @@ class BERTClassifier:
             
             # Load tokenizer first
             tokenizer_path = self.model_dir / "tokenizer"
+            logger.info(f"Looking for tokenizer at: {tokenizer_path}")
             if tokenizer_path.exists():
                 try:
                     self.tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
-                    logger.info("Tokenizer loaded")
+                    logger.info("Tokenizer loaded successfully")
                 except Exception as e:
                     logger.error(f"Failed to load tokenizer: {e}")
                     return False
@@ -121,10 +123,11 @@ class BERTClassifier:
             
             # Load label encoder
             label_encoder_path = self.model_dir / "label_encoder.pkl"
+            logger.info(f"Looking for label encoder at: {label_encoder_path}")
             if label_encoder_path.exists():
                 with open(label_encoder_path, 'rb') as f:
                     self.label_encoder = pickle.load(f)
-                logger.info("Label encoder loaded")
+                logger.info(f"Label encoder loaded with classes: {self.label_encoder.classes_}")
             else:
                 logger.error(f"Label encoder not found at {label_encoder_path}")
                 return False
@@ -132,16 +135,19 @@ class BERTClassifier:
             # Force CPU for model loading and inference
             with tf.device('/CPU:0'):
                 model_path = self.model_dir / "bert_gpu_model"
+                logger.info(f"Looking for model at: {model_path}")
                 if model_path.exists():
                     try:
                         # Try Keras loading first
+                        logger.info("Attempting to load with Keras...")
                         self.model = tf.keras.models.load_model(str(model_path))
                         self.inference_fn = self.model
-                        logger.info("Model loaded with Keras")
+                        logger.info("Model loaded with Keras successfully")
                     except Exception as e:
                         logger.warning(f"Keras loading failed: {e}, trying SavedModel")
                         try:
                             # Fallback to SavedModel loading
+                            logger.info("Attempting to load with SavedModel...")
                             self.model = tf.saved_model.load(str(model_path))
                             if hasattr(self.model, 'signatures'):
                                 self.inference_fn = self.model.signatures['serving_default']
@@ -181,6 +187,7 @@ class BERTClassifier:
         
         try:
             # Tokenize input
+            logger.info(f"Tokenizing input text: {text[:50]}...")
             inputs = self.tokenizer(
                 text,
                 padding='max_length',
@@ -188,25 +195,34 @@ class BERTClassifier:
                 max_length=self.max_length,
                 return_tensors='tf'
             )
+            logger.info(f"Tokenized input shape: {inputs['input_ids'].shape}")
             
             # Force CPU for inference
             with tf.device('/CPU:0'):
                 if hasattr(self, 'inference_fn') and self.inference_fn is not None:
                     try:
+                        logger.info("Using inference function...")
                         predictions = self.inference_fn(**inputs)
                         if isinstance(predictions, dict):
+                            logger.info(f"Predictions is a dict with keys: {list(predictions.keys())}")
                             predictions = list(predictions.values())[0]
                         predictions = predictions.numpy()
+                        logger.info(f"Raw predictions shape: {predictions.shape}")
                     except Exception as e:
                         logger.warning(f"Signature inference failed: {e}, using direct model")
                         predictions = self.model.predict(inputs, verbose=0)
                 else:
+                    logger.info("Using direct model prediction...")
                     predictions = self.model.predict(inputs, verbose=0)
             
             # Process results
+            logger.info(f"Processing predictions: {predictions}")
             predicted_class_id = np.argmax(predictions, axis=1)[0]
+            logger.info(f"Predicted class ID: {predicted_class_id}")
             confidence = float(predictions[0][predicted_class_id])
+            logger.info(f"Confidence: {confidence}")
             predicted_intent = self.label_encoder.inverse_transform([predicted_class_id])[0]
+            logger.info(f"Predicted intent: {predicted_intent}")
             
             # Track performance
             inference_time = time.time() - start_time
