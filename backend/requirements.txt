@@ -1,0 +1,25 @@
+# Core web dependencies
+flask==2.3.3
+flask-cors==4.0.0
+requests==2.31.0
+python-dotenv==1.0.0
+
+# ML/AI Core
+numpy==1.24.3  # Fixed version for TF compatibility
+scikit-learn==1.3.0  # For label encoding/preprocessing
+
+# TensorFlow - Platform specific
+tensorflow==2.13.0; platform_system=="Linux"  # CPU version for Linux/Azure
+tensorflow-directml-plugin==0.4.0; platform_system=="Windows"  # DirectML for Windows
+
+# Hugging Face
+transformers==4.33.2  # For BERT tokenizer and models
+torch==2.0.1  # Required by transformers
+
+# Content fetching
+wikipedia==1.4.0  # For article fetching
+wikipedia-api==0.6.0  # For advanced Wikipedia operations
+
+# OpenAI integration
+openai==0.28.0  # Last version before major API changes
+langchain==0.0.284  # For agentic workflows 

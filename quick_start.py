@@ -190,7 +190,20 @@ def start_application():
     
     print("\n💡 Manual startup commands:")
     print("  Terminal 1: python backend/api_simple.py  (DirectML compatible)")
-    print("  Terminal 2: streamlit run app.py")
+    print("  Terminal 2: streamlit run frontend/app.py")
+    
+    # Wait for user input
+    input("\nPress Enter to continue...")
+    
+    print("\n🔄 Starting DirectML-compatible backend API...")
+    
+    # Start the backend API
+    import subprocess
+    backend_process = subprocess.Popen([
+        sys.executable, "backend/api.py"
+    ])
+    
+    print("💡 After backend starts, run in another terminal: streamlit run frontend/app.py")
     
     # Ask user how they want to start
     print("\nStartup options:")
@@ -203,7 +216,7 @@ def start_application():
         
         if choice == "1":
             print("\n🔄 Starting DirectML-compatible backend API...")
-            print("💡 After backend starts, run in another terminal: streamlit run app.py")
+            print("💡 After backend starts, run in another terminal: streamlit run frontend/app.py")
             print("🛑 Press Ctrl+C to stop the backend")
             
             # Start the DirectML-compatible API

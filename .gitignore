@@ -139,8 +139,9 @@ venv.bak/
 
 # Machine Learning / AI Models
 # TensorFlow/Keras model files (keep initial trained models but ignore training artifacts)
-tensorflow_models/*/variables/variables.data-*
-tensorflow_models/*/variables/variables.index
+variables.data-*
+variables.index
+*.pb
 # Model artifacts and metadata
 tensorflow_models/*/keras_metadata.pb
 tensorflow_models/*/saved_model.pb
@@ -149,6 +150,8 @@ tensorflow_models/*/tokenizer/vocab.txt
 tensorflow_models/bert_gpu_models/
 tensorflow_models/*/bert_gpu_model/
 tensorflow_models/*/tokenizer/
+tensorflow_models/lstm_model/  # LSTM model directory
+tensorflow_models/*/lstm_model/  # Nested LSTM model directories
 # Training data and temporary files
 *_training_sample*.json
 enhanced_training_data.csv
@@ -165,6 +168,8 @@ logs/
 tensorboard_logs/
 
 training_history.png
+
+*-old
 
 # Spyder project settings
 .spyderproject

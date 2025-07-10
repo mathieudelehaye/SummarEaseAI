@@ -17,6 +17,7 @@ import sys
 import subprocess
 import shutil
 from pathlib import Path
+import time
 
 def print_header(text):
     """Print a formatted header"""

@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: summarease-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - TF_CPP_MIN_LOG_LEVEL=3
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      # Mount model directories for persistence
+      - ./tensorflow_models:/app/tensorflow_models
+      - ./saved_model:/app/saved_model
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - summarease-network
+
+  # Frontend Streamlit Service  
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: summarease-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - summarease-network
+
+networks:
+  summarease-network:
+    driver: bridge
+
+# Optional: Add volume for model persistence
+volumes:
+  model-data:
+    driver: local 

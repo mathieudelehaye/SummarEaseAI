@@ -1,74 +1,86 @@
 #!/usr/bin/env python3
 """
-SummarEaseAI Simple Backend API (DirectML Compatible)
-
-This is a simplified version of the Flask backend that works with DirectML TensorFlow
-by avoiding problematic Hugging Face/transformers imports.
+SummarEaseAI Backend API
+Supports both Windows (DirectML) and Linux (CPU) deployments
 """
 
 import os
 import sys
+import logging
+from datetime import datetime
+from pathlib import Path
 
-# Suppress TensorFlow logging before any imports that might load TensorFlow
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR messages
+# Configure logging before any other imports
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('backend.log', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Suppress TensorFlow and transformers logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TF logging
+logging.getLogger('transformers').setLevel(logging.ERROR)
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
 
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
-import logging
-from datetime import datetime
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Add parent directory to path for local development
+repo_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(repo_root))
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Core imports (these work fine with DirectML)
-from utils.wikipedia_fetcher import fetch_article, search_and_fetch_article, search_and_fetch_article_info, fetch_article_with_conversion_info, enhance_query_with_intent
-from backend.summarizer import summarize_article_with_limit, summarize_article, get_summarization_status, summarize_article_with_intent
-from tensorflow_models.bert_gpu_classifier import get_gpu_classifier
-
-# Import TensorFlow Intent Classifier and BERT GPU Classifier for new endpoints
-from tensorflow_models.intent_classifier import get_intent_classifier
-from tensorflow_models.bert_gpu_classifier import GPUBERTClassifier
+# Core imports
+from utils.wikipedia_fetcher import fetch_article, search_and_fetch_article
+from backend.summarizer import summarize_article, get_summarization_status
+from tensorflow_models.bert_classifier import get_classifier as get_bert_classifier
+from tensorflow_models.intent_classifier import get_classifier as get_lstm_classifier
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Initialize BERT intent classifier (GPU-accelerated)
-bert_classifier = get_gpu_classifier()
-
-# Try to load pre-trained BERT model
-if bert_classifier is not None:
-    bert_model_loaded = bert_classifier.load_model()
-else:
-    bert_model_loaded = False
-
-# Initialize TensorFlow LSTM Intent Classifier for new endpoint
-tf_intent_classifier = get_intent_classifier()
-tf_model_loaded = tf_intent_classifier.load_model("saved_model")
-
-# Initialize separate BERT GPU Classifier for new endpoint
-bert_gpu_classifier = GPUBERTClassifier()
-bert_gpu_model_loaded = bert_gpu_classifier.load_model()
-
 # Get summarization status
 summarization_status = get_summarization_status()
 
-# Status flags (GPU BERT enabled)
+# Initialize BERT classifier with absolute path
+model_path = repo_root / "tensorflow_models" / "bert_gpu_models"
+bert_classifier = get_bert_classifier(str(model_path))
+bert_model_loaded = bert_classifier is not None and bert_classifier.is_loaded()
+
+# Initialize LSTM classifier
+lstm_path = repo_root / "tensorflow_models" / "lstm_model"
+lstm_classifier = get_lstm_classifier(str(lstm_path))
+lstm_model_loaded = lstm_classifier is not None and lstm_classifier.model is not None and lstm_classifier.tokenizer is not None
+
+# Log initialization status
+logger.info("=" * 60)
+logger.info("SummarEaseAI Backend Starting")
+logger.info(f"Repository root: {repo_root}")
+logger.info(f"BERT model path: {model_path}")
+logger.info(f"BERT model loaded: {bert_model_loaded}")
+logger.info(f"LSTM model loaded: {lstm_model_loaded}")
+logger.info(f"OpenAI available: {summarization_status.get('openai_available', False)}")
+logger.info("=" * 60)
+
+# Status flags
 HF_AVAILABLE = False
 HF_SUMMARIZER_AVAILABLE = False
-HF_BERT_AVAILABLE = True  # GPU BERT is available
+HF_BERT_AVAILABLE = True  # BERT is available
 HF_SEMANTIC_AVAILABLE = False
 
-logger.info("🚀 SummarEaseAI Backend initialized with GPU BERT")
-logger.info(f"✅ GPU BERT model loaded: {bert_model_loaded}")
-logger.info(f"✅ OpenAI summarization: {summarization_status.get('openai_available', False)}")
-logger.info("🚀 GPU-accelerated BERT intent classification enabled")
+logger.info("SummarEaseAI Backend initialized with BERT")
+logger.info(f"BERT model loaded: {bert_model_loaded}")
+logger.info(f"LSTM model loaded: {lstm_model_loaded}")
+logger.info(f"OpenAI summarization: {summarization_status.get('openai_available', False)}")
+logger.info("BERT intent classification enabled")
 
 # HTML template for the main page
 HTML_TEMPLATE = """
@@ -93,10 +105,10 @@ HTML_TEMPLATE = """
         
         <div class="status">
             <h3>📊 System Status</h3>
-            <p><strong>GPU BERT Model:</strong> <span class="{{ 'available' if bert_model_loaded else 'unavailable' }}">{{ '✅ Loaded' if bert_model_loaded else '❌ Not Available' }}</span></p>
+            <p><strong>BERT Model:</strong> <span class="{{ 'available' if bert_model_loaded else 'unavailable' }}">{{ '✅ Loaded' if bert_model_loaded else '❌ Not Available' }}</span></p>
             <p><strong>OpenAI Integration:</strong> <span class="{{ 'available' if openai_available else 'unavailable' }}">{{ '✅ Available' if openai_available else '❌ Not Configured' }}</span></p>
             <p><strong>Wikipedia Fetching:</strong> <span class="available">✅ Available</span></p>
-            <p><strong>Mode:</strong> <span class="available">🚀 GPU BERT Accelerated</span></p>
+            <p><strong>Mode:</strong> <span class="available">🚀 BERT Accelerated</span></p>
         </div>
 
         <h3>🔗 Available Endpoints</h3>
@@ -111,7 +123,7 @@ HTML_TEMPLATE = """
         </div>
         
         <div class="endpoint">
-            <strong>POST /predict_intent</strong> - Predict user intent (GPU BERT)<br>
+            <strong>POST /predict_intent</strong> - Predict user intent (BERT)<br>
             <code>{"text": "your text"}</code>
         </div>
         
@@ -146,7 +158,7 @@ def status():
     """System status endpoint"""
     return jsonify({
         'status': 'running',
-        'mode': 'GPU BERT Accelerated',
+        'mode': 'BERT Accelerated',
         'features': {
             'bert_model': bert_model_loaded,
             'openai_summarization': summarization_status.get('openai_available', False),
@@ -162,7 +174,7 @@ def health():
     return jsonify({
         'status': 'healthy',
         'backend': 'running',
-        'mode': 'GPU BERT Accelerated',
+        'mode': 'BERT Accelerated',
         'bert_model': bert_model_loaded
     })
 
@@ -170,7 +182,7 @@ def health():
 
 @app.route('/predict_intent', methods=['POST'])
 def predict_intent():
-    """Predict intent using GPU BERT with keyword fallback"""
+    """Predict intent using BERT with keyword fallback"""
     try:
         data = request.json
         if not data or 'text' not in data:
@@ -180,25 +192,25 @@ def predict_intent():
         if not text:
             return jsonify({'error': 'Empty text provided'}), 400
         
-        # Try GPU BERT model first
+        # Try BERT model first
         if bert_classifier and bert_model_loaded:
             try:
                 bert_intent, bert_confidence = bert_classifier.predict(text)
-                logger.info(f"GPU BERT prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f})")
+                logger.info(f"BERT prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f})")
                 
                 response = {
                     'text': text,
                     'predicted_intent': bert_intent,
                     'confidence': bert_confidence,
-                    'model_type': "GPU BERT",
+                    'model_type': "BERT",
                     'model_loaded': bert_model_loaded
                 }
                 
-                logger.info(f"Final prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f}, model: GPU BERT)")
+                logger.info(f"Final prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f}, model: BERT)")
                 return jsonify(response)
                 
             except Exception as e:
-                logger.error(f"GPU BERT prediction failed: {str(e)}, falling back to keywords")
+                logger.error(f"BERT prediction failed: {str(e)}, falling back to keywords")
         
         # Fallback to keyword-based classification
         keyword_intent, keyword_confidence = classify_intent_keywords(text)
@@ -220,7 +232,7 @@ def predict_intent():
 
 @app.route('/predict_intent_bert', methods=['POST'])
 def predict_intent_bert():
-    """Predict intent using GPU BERT model"""
+    """Predict intent using BERT model"""
     try:
         data = request.json
         if not data or 'text' not in data:
@@ -230,16 +242,16 @@ def predict_intent_bert():
         if not text:
             return jsonify({'error': 'Empty text provided'}), 400
         
-        # Use GPU BERT model
+        # Use BERT model
         if bert_classifier and bert_model_loaded:
             bert_intent, bert_confidence = bert_classifier.predict(text)
-            logger.info(f"GPU BERT prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f})")
+            logger.info(f"BERT prediction - Text: '{text}' -> Intent: {bert_intent} (confidence: {bert_confidence:.3f})")
             
             response = {
                 'text': text,
                 'predicted_intent': bert_intent,
                 'confidence': bert_confidence,
-                'model_type': "GPU BERT",
+                'model_type': "BERT",
                 'model_loaded': bert_model_loaded
             }
         else:
@@ -248,7 +260,7 @@ def predict_intent_bert():
                 'text': text,
                 'predicted_intent': "Unknown",
                 'confidence': 0.0,
-                'model_type': "GPU BERT (Not loaded)",
+                'model_type': "BERT (Not loaded)",
                 'model_loaded': bert_model_loaded
             }
         
@@ -304,7 +316,7 @@ def summarize():
         
         logger.info(f"📝 Summarization request: '{query}'")
         
-        # Intent detection using GPU BERT
+        # Intent detection using BERT
         intent = "General"
         intent_confidence = 0.0
         intent_model = "Keyword fallback"
@@ -312,10 +324,10 @@ def summarize():
         if bert_classifier and bert_model_loaded:
             try:
                 intent, intent_confidence = bert_classifier.predict(query)
-                intent_model = "GPU BERT"
+                intent_model = "BERT"
                 logger.info(f"🧠 Intent detected: {intent} (confidence: {intent_confidence:.3f})")
             except Exception as e:
-                logger.error(f"GPU BERT intent detection failed: {str(e)}")
+                logger.error(f"BERT intent detection failed: {str(e)}")
                 # Fallback to keyword classification
                 intent, intent_confidence = classify_intent_keywords(query)
                 intent_model = "Keyword fallback"
@@ -625,72 +637,50 @@ def summarize_with_agents():
 
 @app.route('/intent', methods=['POST'])
 def intent():
-    """
-    Predict intent using TensorFlow LSTM model
-    
-    Request body:
-    {
-        "text": "your text to classify"
-    }
-    
-    Response:
-    {
-        "text": "input text",
-        "intent": "predicted category", 
-        "confidence": confidence_score,
-        "model_type": "TensorFlow LSTM",
-        "model_loaded": true/false,
-        "timestamp": "2024-01-01T12:00:00"
-    }
-    """
+    """Predict intent using LSTM model"""
     try:
-        # Validate request
-        if not request.is_json:
-            return jsonify({'error': 'Request must be JSON'}), 400
-        
-        data = request.get_json()
+        data = request.json
         if not data or 'text' not in data:
-            return jsonify({'error': 'Missing "text" field in request'}), 400
-        
-        text = data.get('text', '').strip()
+            return jsonify({
+                'error': 'Missing text parameter',
+                'model_loaded': False,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+            
+        text = data['text'].strip()
         if not text:
-            return jsonify({'error': 'Text field cannot be empty'}), 400
-        
-        # Log the prediction request
-        logger.info(f"🔍 TF Intent prediction request: '{text[:50]}{'...' if len(text) > 50 else ''}'")
-        
-        # Predict intent using TensorFlow LSTM model
-        predicted_intent, confidence = tf_intent_classifier.predict_intent(text)
-        
-        # Prepare response
-        response = {
-            'text': text,
-            'intent': predicted_intent,
-            'confidence': round(confidence, 4),
-            'model_type': 'TensorFlow LSTM',
-            'model_loaded': tf_model_loaded,
-            'categories_available': ['History', 'Science', 'Biography', 'Technology', 'Arts', 'Sports', 'Politics', 'Geography', 'General'],
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        # Log the result
-        logger.info(f"✅ TF Prediction: '{text[:30]}...' -> {predicted_intent} (confidence: {confidence:.3f})")
-        
-        return jsonify(response)
-        
+            return jsonify({
+                'error': 'Empty text provided',
+                'model_loaded': False,
+                'timestamp': datetime.now().isoformat()
+            }), 400
+            
+        # Check if model is loaded
+        if not lstm_classifier or not lstm_classifier.model or not lstm_classifier.tokenizer:
+            return jsonify({
+                'error': 'LSTM model not loaded',
+                'model_loaded': False,
+                'text': text,
+                'timestamp': datetime.now().isoformat()
+            }), 503
+            
+        # Get prediction
+        result = lstm_classifier.predict_intent(text)
+        return jsonify(result)
+            
     except Exception as e:
-        error_msg = f"Error in TF intent prediction: {str(e)}"
-        logger.error(error_msg)
+        logger.error(f"Error in /intent endpoint: {str(e)}")
         return jsonify({
-            'error': 'Internal server error',
-            'message': error_msg,
+            'error': str(e),
+            'model_loaded': False,
+            'text': text if 'text' in locals() else None,
             'timestamp': datetime.now().isoformat()
         }), 500
 
 @app.route('/intent_bert', methods=['POST'])
 def intent_bert():
     """
-    Predict intent using GPU BERT model
+    Predict intent using BERT model
     
     Request body:
     {
@@ -702,17 +692,17 @@ def intent_bert():
         "text": "input text",
         "intent": "predicted category", 
         "confidence": confidence_score,
-        "model_type": "GPU BERT",
+        "model_type": "BERT",
         "model_loaded": true/false,
         "timestamp": "2024-01-01T12:00:00"
     }
     """
     try:
         # Check if model is loaded
-        if not bert_gpu_model_loaded:
+        if not bert_model_loaded or bert_classifier is None:
             return jsonify({
                 'error': 'BERT model not loaded',
-                'message': 'GPU BERT model is not available',
+                'message': 'BERT model is not available',
                 'model_loaded': False
             }), 503
         
@@ -731,16 +721,16 @@ def intent_bert():
         # Log the prediction request
         logger.info(f"🔍 BERT prediction request: '{text[:50]}{'...' if len(text) > 50 else ''}'")
         
-        # Predict intent using GPU BERT model
-        predicted_intent, confidence = bert_gpu_classifier.predict(text)
+        # Predict intent using BERT model
+        predicted_intent, confidence = bert_classifier.predict(text)
         
         # Prepare response
         response = {
             'text': text,
             'intent': predicted_intent,
             'confidence': round(confidence, 4),
-            'model_type': 'GPU BERT',
-            'model_loaded': bert_gpu_model_loaded,
+            'model_type': 'BERT',
+            'model_loaded': bert_model_loaded,
             'categories_available': ['History', 'Science', 'Biography', 'Technology', 'Arts', 'Sports', 'Politics', 'Geography', 'General'],
             'gpu_accelerated': True,
             'timestamp': datetime.now().isoformat()
@@ -757,7 +747,7 @@ def intent_bert():
         return jsonify({
             'error': 'Internal server error',
             'message': error_msg,
-            'model_type': 'GPU BERT',
+            'model_type': 'BERT',
             'timestamp': datetime.now().isoformat()
         }), 500
 
