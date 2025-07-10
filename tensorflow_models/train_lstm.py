@@ -1,14 +1,13 @@
 """
 Train LSTM Intent Classifier
-Uses enhanced Wikipedia data to train a text classification model
+Uses local training data to train a text classification model
 Supports DirectML GPU acceleration
 """
 
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF debug/info messages
-
 import json
 import logging
+import traceback
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -89,32 +88,36 @@ def check_gpu_support():
 def load_data(data_path):
     """Load and preprocess data from CSV file."""
     logger.info(f"Loading data from {data_path}")
+    
+    # Check if file exists
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Training data file not found: {data_path}")
+        
     df = pd.read_csv(data_path)
     
-    # Filter to use same categories as Wikipedia training
-    valid_categories = ['Biography', 'History', 'Music', 'Science', 'Sports', 'Technology', 'Finance']
-    df = df[df['intent'].isin(valid_categories)]
-    logger.info(f"Dataset size after category filtering: {len(df)} samples")
-    logger.info(f"Intents: {sorted(df['intent'].unique().tolist())}")
-
+    # Get unique intents
+    unique_intents = sorted(df['intent'].unique())
+    logger.info(f"Found intents: {unique_intents}")
+    logger.info(f"Total samples: {len(df)}")
+    
     # Prepare data
-    texts = df['text_clean'].values
+    texts = df['text'].values
     labels = df['intent'].values
-
+    
     # Encode labels
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(labels)
-
-    # Split data
+    
+    # Split data with stratification
     X_train, X_test, y_train, y_test = train_test_split(
         texts, y, test_size=0.2, random_state=42, stratify=y
     )
-
+    
     logger.info(f"Training samples: {len(X_train)}")
     logger.info(f"Testing samples: {len(X_test)}")
     logger.info(f"Number of classes: {len(label_encoder.classes_)}")
     logger.info(f"Classes: {sorted(label_encoder.classes_.tolist())}")
-
+    
     return X_train, X_test, y_train, y_test, label_encoder
 
 def prepare_tokenizer(texts):
@@ -122,8 +125,23 @@ def prepare_tokenizer(texts):
     tokenizer = Tokenizer(num_words=MAX_WORDS)
     tokenizer.fit_on_texts(texts)
     
-    logger.info(f"Vocabulary size: {len(tokenizer.word_index)}")
-    logger.info(f"Using top {MAX_WORDS} words")
+    # Log vocabulary statistics
+    total_words = len(tokenizer.word_index)
+    words_used = min(MAX_WORDS, total_words)
+    coverage = words_used / total_words * 100 if total_words > 0 else 0
+    
+    logger.info(f"Total unique words: {total_words}")
+    logger.info(f"Using top {words_used} words ({coverage:.1f}% of vocabulary)")
+    
+    # Get sequence length statistics
+    sequences = tokenizer.texts_to_sequences(texts)
+    lengths = [len(seq) for seq in sequences]
+    avg_len = sum(lengths) / len(lengths)
+    max_len = max(lengths)
+    
+    logger.info(f"Average sequence length: {avg_len:.1f} tokens")
+    logger.info(f"Maximum sequence length: {max_len} tokens")
+    logger.info(f"Using max_length = {MAX_LEN} tokens")
     
     return tokenizer
 
@@ -198,78 +216,80 @@ def save_model(model, tokenizer, label_encoder, save_dir, training_history=None)
 def main():
     """Main training function"""
     try:
-        # Check GPU support first
+        # Check GPU support
         gpu_available = check_gpu_support()
         
-        # Setup paths
-        current_dir = Path(__file__).resolve().parent
-        data_path = current_dir / "training_data" / "enhanced_training_data.csv"
-        save_dir = current_dir / "lstm_model"
-        logs_dir = current_dir / "logs" / "lstm_training"
+        # Set paths
+        data_path = "tensorflow_models/training_data/enhanced_wikipedia_training_data.csv"
+        save_dir = "tensorflow_models/lstm_model"
         
-        # Create directories
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Load and prepare data
+        # Load and preprocess data
         X_train, X_test, y_train, y_test, label_encoder = load_data(data_path)
-        logger.info(f"Data loaded: {len(X_train)} training samples, {len(X_test)} test samples")
         
-        # Prepare text data
-        tokenizer = prepare_tokenizer(X_train)
-        X_train = tokenizer.texts_to_sequences(X_train)
-        X_test = tokenizer.texts_to_sequences(X_test)
+        # Prepare tokenizer
+        tokenizer = prepare_tokenizer(X_train)  # Fit only on training data
+        
+        # Convert text to sequences
+        logger.info("Converting texts to sequences...")
+        X_train_seq = tokenizer.texts_to_sequences(X_train)
+        X_test_seq = tokenizer.texts_to_sequences(X_test)
         
         # Pad sequences
-        X_train = pad_sequences(X_train, maxlen=MAX_LEN)
-        X_test = pad_sequences(X_test, maxlen=MAX_LEN)
+        logger.info("Padding sequences...")
+        X_train_pad = pad_sequences(X_train_seq, maxlen=MAX_LEN)
+        X_test_pad = pad_sequences(X_test_seq, maxlen=MAX_LEN)
         
-        # Build and train model
+        # Build model
         num_classes = len(label_encoder.classes_)
         vocab_size = min(len(tokenizer.word_index) + 1, MAX_WORDS)
-        
         model = build_model(num_classes, vocab_size)
-        logger.info("Model built successfully")
         
-        # Setup callbacks
+        # Prepare callbacks
         callbacks = [
-            TensorBoard(
-                log_dir=str(logs_dir),
-                histogram_freq=1,
-                write_graph=True
-            ),
-            ModelCheckpoint(
-                str(save_dir / "checkpoints" / "model_{epoch:02d}_{val_accuracy:.4f}.h5"),
-                monitor='val_accuracy',
-                save_best_only=True,
-                mode='max'
-            ),
             EarlyStopping(
                 monitor='val_loss',
                 patience=3,
                 restore_best_weights=True
+            ),
+            ModelCheckpoint(
+                filepath=os.path.join(save_dir, 'checkpoints', 'model_{epoch:02d}.h5'),
+                save_best_only=True,
+                monitor='val_loss'
+            ),
+            TensorBoard(
+                log_dir=os.path.join(save_dir, 'logs'),
+                histogram_freq=1
             )
         ]
         
-        # Train
+        # Train model
+        logger.info("\nStarting training...")
+        logger.info(f"Training samples shape: {X_train_pad.shape}")
+        logger.info(f"Testing samples shape: {X_test_pad.shape}")
+        
         history = model.fit(
-            X_train, y_train,
-            validation_data=(X_test, y_test),
+            X_train_pad, y_train,
+            validation_data=(X_test_pad, y_test),
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
-            callbacks=callbacks,
-            verbose=1
+            callbacks=callbacks
         )
         
-        # Evaluate
-        loss, accuracy = model.evaluate(X_test, y_test, verbose=0)
-        logger.info(f"Test accuracy: {accuracy:.4f}")
-        
-        # Save everything
+        # Save model and associated files
         save_model(model, tokenizer, label_encoder, save_dir, history)
-        logger.info("Training completed successfully")
+        
+        logger.info("\n✅ Training completed successfully!")
+        
+        # Print final metrics
+        val_loss = min(history.history['val_loss'])
+        val_acc = max(history.history['val_accuracy'])
+        logger.info(f"\nBest validation metrics:")
+        logger.info(f"  Loss: {val_loss:.4f}")
+        logger.info(f"  Accuracy: {val_acc:.4f}")
         
     except Exception as e:
-        logger.error(f"Training failed: {e}")
+        logger.error(f"❌ Training failed: {str(e)}")
+        logger.error(f"Stack trace:\n{traceback.format_exc()}")
         raise
 
 if __name__ == '__main__':
