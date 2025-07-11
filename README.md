@@ -14,6 +14,20 @@
 
 ---
 
+## 🌐 Live Application
+
+### 🎯 **Frontend Application**
+**Live URL**: https://summarease-frontend--pmhy95g.wittyflower-c2822a5a.eastus.azurecontainerapps.io
+
+### 🤖 **Backend API**
+**Live URL**: https://mdelehaye-summarease-backend.hf.space
+
+### 🚀 **Deployment Architecture**
+- **Frontend**: Dockerized and deployed to Azure Container Apps via Terraform
+- **Backend**: Dockerized and deployed to Hugging Face Spaces (backend Terraform integration is under test)
+
+---
+
 ## 📸 Application Screenshots
 
 ### 🎯 Main Interface - Multi-Source Summarization
