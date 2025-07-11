@@ -167,6 +167,7 @@ checkpoints/
 logs/
 tensorboard_logs/
 
+model.safetensors
 training_history.png
 vocab.txt
 *-old

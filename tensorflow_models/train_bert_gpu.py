@@ -1,38 +1,42 @@
 """
-Train BERT model for intent classification with GPU support
+Train BERT model for intent classification with PyTorch GPU support
 """
 
 import os
 import sys
 import logging
-import traceback
 import json
+import shutil
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Change logging level to show warnings (0=all, 1=info, 2=warning, 3=error)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
-
-# Required imports
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-import tensorflow as tf
 from transformers import (
     AutoTokenizer,
-    TFAutoModelForSequenceClassification
+    AutoModelForSequenceClassification,
+    get_linear_schedule_with_warmup
 )
+from tqdm.auto import tqdm
+import psutil
+try:
+    import GPUtil  # Package name is GPUtil but we use it in lowercase
+    gputil = GPUtil  # Alias for consistent lowercase usage
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.error("\n❌ GPUtil package not found!")
+    logger.error("   Please install it with: pip install GPUtil")
+    sys.exit(1)
 
-# Don't suppress TF logging
-logging.getLogger('tensorflow').setLevel(logging.INFO)
+import signal
+import sys
+import time  # Add time import for GPU testing
 
 # Configure logging
 logging.basicConfig(
@@ -45,71 +49,81 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class SimpleTokenizer:
-    """A basic tokenizer for our BERT model"""
-    def __init__(self, vocab_size=30522, max_length=512):
-        self.vocab_size = vocab_size
-        self.max_length = max_length
+def setup_gpu():
+    """Setup and verify GPU availability"""
+    if not torch.cuda.is_available():
+        logger.warning("\n🚨 CUDA is not available. Training on CPU will be SIGNIFICANTLY slower!")
+        logger.warning("   A single epoch could take hours instead of minutes.")
+        logger.info("\n💡 To enable GPU support, make sure you have:")
+        logger.info("   1. An NVIDIA GPU")
+        logger.info("   2. CUDA Toolkit 12.1 installed")
+        logger.info("   3. Proper PyTorch CUDA version (current torch: %s)", torch.__version__)
+        logger.info("\n📝 Installation Guide:")
+        logger.info("   1. Install CUDA Toolkit 12.1 from NVIDIA website")
+        logger.info("   2. Install PyTorch with CUDA: pip install torch==2.1.1+cu121 -f https://download.pytorch.org/whl/cu121")
+        return False
         
-    def encode(self, texts, padding=True, truncation=True):
-        """Simple encoding - just use character indices"""
-        if isinstance(texts, str):
-            texts = [texts]
+    # Get GPU information
+    gpu_id = 0  # Use first GPU by default
+    try:
+        gpus = gputil.getGPUs()
+        if gpus:
+            gpu = gpus[0]  # Get primary GPU
+            logger.info("\n🎮 GPU Information:")
+            logger.info(f"   - Name: {gpu.name}")
+            logger.info(f"   - Memory Total: {gpu.memoryTotal}MB")
+            logger.info(f"   - Memory Free: {gpu.memoryFree}MB")
+            logger.info(f"   - Memory Used: {gpu.memoryUsed}MB")
+            logger.info(f"   - GPU Load: {gpu.load*100:.1f}%")
             
-        input_ids = []
-        attention_masks = []
-        
-        for text in texts:
-            # Convert to lowercase and split into words
-            words = text.lower().split()
-            
-            # Truncate if needed
-            if truncation and len(words) > self.max_length - 2:  # -2 for [CLS] and [SEP]
-                words = words[:self.max_length - 2]
+            # Check if GPU has enough memory (need at least 2GB free)
+            if gpu.memoryFree < 2000:  # 2000MB = 2GB
+                logger.warning("\n⚠️ Less than 2GB GPU memory available!")
+                logger.warning("   This may cause out-of-memory errors during training.")
+                logger.warning("   Consider closing other GPU applications or reducing batch size.")
+                return False
                 
-            # Create tokens - simple hash function to get consistent IDs
-            tokens = [1]  # [CLS]
-            for word in words:
-                token_id = hash(word) % (self.vocab_size - 3) + 3  # Leave room for special tokens
-                tokens.append(token_id)
-            tokens.append(2)  # [SEP]
+        else:
+            logger.warning("\n⚠️ No NVIDIA GPUs detected!")
+            logger.warning("   This could mean:")
+            logger.warning("   1. You don't have an NVIDIA GPU")
+            logger.warning("   2. GPU drivers are not properly installed")
+            logger.warning("   3. CUDA is not properly installed")
+            return False
             
-            # Create attention mask
-            attention_mask = [1] * len(tokens)
-            
-            # Pad if needed
-            if padding and len(tokens) < self.max_length:
-                pad_length = self.max_length - len(tokens)
-                tokens.extend([0] * pad_length)  # 0 is [PAD]
-                attention_mask.extend([0] * pad_length)
-                
-            input_ids.append(tokens)
-            attention_masks.append(attention_mask)
-            
-        return {
-            'input_ids': np.array(input_ids, dtype=np.int32),
-            'attention_mask': np.array(attention_masks, dtype=np.int32)
-        }
+    except Exception as e:
+        logger.warning(f"\n⚠️ Error getting GPU information: {e}")
+        logger.warning("   This might indicate driver or CUDA installation issues.")
+        return False
         
-    def save_pretrained(self, path):
-        """Save tokenizer configuration"""
-        config = {
-            'vocab_size': self.vocab_size,
-            'max_length': self.max_length
-        }
-        os.makedirs(path, exist_ok=True)
-        with open(os.path.join(path, 'tokenizer_config.json'), 'w') as f:
-            json.dump(config, f)
-            
-    @classmethod
-    def from_pretrained(cls, path):
-        """Load tokenizer from configuration"""
-        with open(os.path.join(path, 'tokenizer_config.json'), 'r') as f:
-            config = json.load(f)
-        return cls(**config)
+    # Set up PyTorch device
+    device = torch.device(f"cuda:{gpu_id}")
+    torch.cuda.set_device(device)
+    
+    # Test CUDA memory allocation
+    try:
+        logger.info("\n🧪 Testing CUDA memory allocation...")
+        test_tensor = torch.zeros((1000, 1000), device=device)  # Allocate ~4MB
+        del test_tensor
+        torch.cuda.empty_cache()
+        logger.info("✅ CUDA memory test successful!")
+    except Exception as e:
+        logger.error(f"\n❌ CUDA memory test failed: {e}")
+        logger.error("   This indicates a problem with CUDA setup or GPU access.")
+        return False
+        
+    # Log CUDA configuration
+    logger.info("\n🚀 CUDA Configuration:")
+    logger.info(f"   - CUDA Version: {torch.version.cuda}")
+    logger.info(f"   - PyTorch Version: {torch.__version__}")
+    logger.info(f"   - GPU Device: {torch.cuda.get_device_name(gpu_id)}")
+    logger.info(f"   - GPU Architecture: {torch.cuda.get_device_capability(gpu_id)}")
+    logger.info(f"   - Max Memory Allocated: {torch.cuda.max_memory_allocated(device)/1e9:.2f}GB")
+    
+    return True
 
 class MemoryTracker:
-    """Track memory usage during training"""
+    """Track GPU memory usage during training"""
     def __init__(self):
         self.baseline_mb = 0
         self.peak_mb = 0
@@ -117,8 +131,8 @@ class MemoryTracker:
     def _get_memory_mb(self):
         """Get current GPU memory usage in MB"""
         try:
-            memory_info = tf.config.experimental.get_memory_info('GPU:0')
-            return memory_info['current'] / (1024 * 1024)
+            memory_used = torch.cuda.memory_allocated() / (1024 * 1024)
+            return memory_used
         except:
             return 0
             
@@ -145,340 +159,489 @@ class MemoryTracker:
         except Exception as e:
             logging.warning(f"Unable to log memory usage: {e}")
 
+class IntentDataset(Dataset):
+    """Custom dataset for intent classification"""
+    def __init__(self, texts, labels, tokenizer, max_length=128):
+        # Convert pandas Series to list to avoid indexing issues
+        self.texts = texts.tolist() if hasattr(texts, 'tolist') else list(texts)
+        self.labels = labels.tolist() if hasattr(labels, 'tolist') else list(labels)
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+        text = str(self.texts[idx])
+        label = self.labels[idx]
+
+        encoding = self.tokenizer(
+            text,
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
+
+        return {
+            'input_ids': encoding['input_ids'].flatten(),
+            'attention_mask': encoding['attention_mask'].flatten(),
+            'labels': torch.tensor(label, dtype=torch.long)
+        }
+
 class BERTIntentClassifier:
-    """BERT-based intent classifier"""
+    """BERT-based intent classifier using PyTorch"""
     def __init__(
         self,
-        model_path,
-        batch_size=16,
-        learning_rate=1e-4,
-        epochs=10,
-        max_length=128,
-        use_gradient_checkpointing=False
+        model_path: str,
+        num_labels: int = None,
+        batch_size: int = 16,
+        learning_rate: float = 1e-4,
+        epochs: int = 10,
+        max_length: int = 128,
+        model_name: str = "bert-base-uncased",
+        gradient_checkpointing: bool = False
     ):
         self.model_path = Path(model_path)
+        self.num_labels = num_labels
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.max_length = max_length
-        self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.model_name = model_name
+        self.gradient_checkpointing = gradient_checkpointing
+        
+        # Initialize device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self.device.type == "cuda":
+            # Log GPU info
+            gpu = gputil.getGPUs()[0]
+            logger.info(f"🎮 Training on GPU: {torch.cuda.get_device_name(0)}")
+            logger.info(f"   - Memory Free: {gpu.memoryFree}MB")
+            
+            # Verify CUDA is actually being used
+            logger.info("\n🔍 Verifying CUDA Setup:")
+            logger.info(f"   - CUDA Available: {torch.cuda.is_available()}")
+            logger.info(f"   - Current Device: {torch.cuda.current_device()}")
+            logger.info(f"   - Device Count: {torch.cuda.device_count()}")
+            
+            # Test tensor operations on GPU
+            logger.info("\n🧪 Testing GPU Tensor Operations:")
+            try:
+                x = torch.randn(1000, 1000, device=self.device)
+                y = torch.randn(1000, 1000, device=self.device)
+                start_time = time.time()
+                z = torch.matmul(x, y)
+                del z  # Clean up
+                torch.cuda.synchronize()  # Wait for GPU
+                end_time = time.time()
+                logger.info(f"   - Matrix multiplication time: {(end_time - start_time)*1000:.2f}ms")
+                logger.info("   ✅ GPU tensor operations working correctly")
+            except Exception as e:
+                logger.error(f"   ❌ GPU tensor test failed: {e}")
+        else:
+            logger.warning("⚠️ Training on CPU - this will be slow!")
         
         # Initialize logging
         self.logger = logging.getLogger(__name__)
-        self._log_config()
+        
+        # Setup signal handler for graceful interruption
+        signal.signal(signal.SIGINT, self._signal_handler)
+        self._interrupt_requested = False
         
         # Initialize memory tracking
         self.memory_tracker = MemoryTracker()
         
+        # Initialize model and configuration
+        self._log_config()
+        if not self._build_model():
+            raise RuntimeError("Failed to initialize model")
+
+    def _signal_handler(self, signum, frame):
+        """Handle interrupt signal (Ctrl+C)"""
+        logger.info("\n\n⚠️ Interrupt received! Cleaning up...")
+        self._interrupt_requested = True
+        
+    def _cleanup(self):
+        """Cleanup resources"""
+        if self.device.type == "cuda":
+            try:
+                # Clear CUDA cache
+                torch.cuda.empty_cache()
+                # Reset device
+                torch.cuda.reset_peak_memory_stats()
+                torch.cuda.synchronize()
+            except Exception as e:
+                logger.warning(f"Error during CUDA cleanup: {e}")
+        
+        # Close progress bars if any are open
+        try:
+            sys.stdout.write('\n')
+            sys.stdout.flush()
+        except:
+            pass
+
+    def _monitor_gpu_usage(self, description=""):
+        """Monitor GPU usage during training"""
+        if self.device.type == "cuda":
+            try:
+                gpu = gputil.getGPUs()[0]
+                logger.info(f"\n📊 GPU Usage {description}:")
+                logger.info(f"   - Memory Used: {gpu.memoryUsed}MB")
+                logger.info(f"   - Memory Free: {gpu.memoryFree}MB")
+                logger.info(f"   - GPU Load: {gpu.load*100:.1f}%")
+                logger.info(f"   - GPU Temperature: {gpu.temperature}°C")
+            except Exception as e:
+                logger.warning(f"Could not monitor GPU usage: {e}")
+
     def _log_config(self):
         """Log training configuration"""
         self.logger.info("🚀 BERT Classifier initialized")
+        self.logger.info(f"🖥️ Using device: {self.device}")
+        self.logger.info(f"🤗 Model: {self.model_name}")
         self.logger.info(f"📊 Batch size: {self.batch_size}")
         self.logger.info(f"📈 Learning rate: {self.learning_rate}")
         self.logger.info(f"🔄 Epochs: {self.epochs}")
         self.logger.info(f"📏 Max sequence length: {self.max_length}")
         self.logger.info(f"💾 Save directory: {self.model_path}")
         self.logger.info("⚙️ Memory optimizations:")
-        self.logger.info(f"   - Gradient checkpointing: {self.use_gradient_checkpointing}")
-        self.logger.info(f"   - Dynamic padding: True")
-        self.logger.info(f"   - Optimized attention: True")
-        
-    def _get_callbacks(self):
-        """Get training callbacks"""
-        return [
-            tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss',
-                patience=2,
-                restore_best_weights=True
-            ),
-            tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.2,
-                patience=1,
-                min_lr=1e-6
-            ),
-            tf.keras.callbacks.ModelCheckpoint(
-                filepath=str(self.model_path / 'checkpoints' / 'best_model'),
-                save_best_only=True,
-                monitor='val_loss'
-            )
-        ]
-        
+        self.logger.info(f"   - Gradient checkpointing: {self.gradient_checkpointing}")
+         
     def _build_model(self):
         """Build or load the model"""
         try:
-            if (self.model_path / 'saved_model.pb').exists():
+            if (self.model_path / 'model.safetensors').exists():
                 self.logger.info(f"Loading model from {self.model_path}")
-                self.model = tf.keras.models.load_model(str(self.model_path))
+                self.model = AutoModelForSequenceClassification.from_pretrained(
+                    str(self.model_path),
+                    use_safetensors=True  # Explicitly use safetensors
+                )
+                self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_path))
             else:
                 self.logger.info("Creating new model")
-                self.model = create_simple_bert_model()
+                self.model = AutoModelForSequenceClassification.from_pretrained(
+                    self.model_name,
+                    num_labels=self.num_labels,
+                    use_safetensors=True  # Explicitly use safetensors
+                )
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
                 
-            # Load or create tokenizer
-            tokenizer_config = self.model_path / 'tokenizer_config.json'
-            if tokenizer_config.exists():
-                self.logger.info(f"Loading tokenizer from {self.model_path}")
-                self.tokenizer = SimpleTokenizer.from_pretrained(str(self.model_path))
-            else:
-                self.logger.info("Creating new tokenizer")
-                self.tokenizer = SimpleTokenizer(max_length=self.max_length)
-                self.tokenizer.save_pretrained(str(self.model_path))
+            # Enable gradient checkpointing if requested
+            if self.gradient_checkpointing:
+                self.model.gradient_checkpointing_enable()
                 
-            # Compile model
-            self.model.compile(
-                optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate),
-                loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                metrics=['accuracy']
-            )
+            # Move model to device and enable training mode
+            self.model = self.model.to(self.device)
+            self.model.train()
+            
+            # Log model size
+            total_params = sum(p.numel() for p in self.model.parameters())
+            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            logger.info(f"📊 Model size:")
+            logger.info(f"   - Total parameters: {total_params:,}")
+            logger.info(f"   - Trainable parameters: {trainable_params:,}")
             
             return True
+            
         except Exception as e:
             self.logger.error(f"Error building model: {str(e)}")
             return False
-            
-    def _prepare_data(self, texts, labels=None):
-        """Prepare data for training or inference"""
-        # Tokenize texts
-        encoded = self.tokenizer.encode(
-            texts,
-            padding=True,
-            truncation=True
-        )
-        
-        if labels is not None:
-            return encoded, labels
-        return encoded
-        
+
     def train(self, X_train, X_test, y_train, y_test):
         """Train the model"""
         try:
-            self.logger.info("Starting training...")
-            self.memory_tracker.log_memory("Before training")
+            # Create datasets
+            train_dataset = IntentDataset(X_train, y_train, self.tokenizer, self.max_length)
+            test_dataset = IntentDataset(X_test, y_test, self.tokenizer, self.max_length)
             
-            # Initialize model
-            self.logger.info("Initializing model...")
-            if not self._build_model():
-                raise RuntimeError("Failed to build model")
-                
-            # Prepare data
-            train_data, train_labels = self._prepare_data(X_train, y_train)
-            test_data, test_labels = self._prepare_data(X_test, y_test)
-            
-            # Create dataset
-            train_dataset = tf.data.Dataset.from_tensor_slices((
-                {
-                    'input_ids': train_data['input_ids'],
-                    'attention_mask': train_data['attention_mask']
-                },
-                train_labels
-            )).shuffle(1000).batch(self.batch_size)
-            
-            test_dataset = tf.data.Dataset.from_tensor_slices((
-                {
-                    'input_ids': test_data['input_ids'],
-                    'attention_mask': test_data['attention_mask']
-                },
-                test_labels
-            )).batch(self.batch_size)
-            
-            # Train
-            self.logger.info("Training model...")
-            history = self.model.fit(
+            # Create data loaders with appropriate num_workers for GPU
+            num_workers = 4 if self.device.type == "cuda" else 0
+            train_loader = DataLoader(
                 train_dataset,
-                validation_data=test_dataset,
-                epochs=self.epochs,
-                callbacks=self._get_callbacks()
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=num_workers,
+                pin_memory=True if self.device.type == "cuda" else False
+            )
+            test_loader = DataLoader(
+                test_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                pin_memory=True if self.device.type == "cuda" else False
             )
             
-            # Save final model
-            self.model.save(str(self.model_path))
-            self.logger.info(f"Model saved to {self.model_path}")
+            # Initialize optimizer and scheduler
+            optimizer = optim.AdamW(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                weight_decay=0.01
+            )
             
-            return history
+            num_training_steps = len(train_loader) * self.epochs
+            scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=num_training_steps // 10,
+                num_training_steps=num_training_steps
+            )
+            
+            # Training loop
+            best_val_loss = float('inf')
+            for epoch in range(self.epochs):
+                if self._interrupt_requested:
+                    logger.info("Training interrupted by user")
+                    break
+                    
+                self.logger.info(f"\nEpoch {epoch + 1}/{self.epochs}")
+                
+                # Training phase
+                self.model.train()
+                train_loss = 0
+                train_steps = 0
+                
+                # Monitor GPU at start of epoch
+                self._monitor_gpu_usage(f"Start of Epoch {epoch + 1}")
+                
+                progress_bar = tqdm(train_loader, desc="Training")
+                try:
+                    for batch_idx, batch in enumerate(progress_bar):
+                        if self._interrupt_requested:
+                            break
+                            
+                        # Move batch to device
+                        input_ids = batch['input_ids'].to(self.device)
+                        attention_mask = batch['attention_mask'].to(self.device)
+                        labels = batch['labels'].to(self.device)
+                        
+                        # Forward pass
+                        outputs = self.model(
+                            input_ids=input_ids,
+                            attention_mask=attention_mask,
+                            labels=labels
+                        )
+                        
+                        loss = outputs.loss
+                        train_loss += loss.item()
+                        train_steps += 1
+                        
+                        # Backward pass
+                        loss.backward()
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                        optimizer.step()
+                        scheduler.step()
+                        optimizer.zero_grad()
+                        
+                        # Update progress bar
+                        progress_bar.set_postfix({
+                            'loss': f"{train_loss/train_steps:.4f}"
+                        })
+                        
+                        # Monitor GPU every 5 batches
+                        if batch_idx % 5 == 0:
+                            self._monitor_gpu_usage(f"Batch {batch_idx}")
+                        
+                        # Clear GPU memory if needed
+                        if self.device.type == "cuda":
+                            torch.cuda.empty_cache()
+                            
+                finally:
+                    progress_bar.close()
+                
+                if self._interrupt_requested:
+                    break
+                    
+                # Calculate average training loss
+                avg_train_loss = train_loss / train_steps if train_steps > 0 else float('inf')
+                
+                # Monitor GPU before validation
+                self._monitor_gpu_usage("Before Validation")
+                
+                # Validation phase
+                self.model.eval()
+                val_loss = 0
+                val_steps = 0
+                correct = 0
+                total = 0
+                
+                with torch.no_grad():
+                    for batch in tqdm(test_loader, desc="Validation"):
+                        input_ids = batch['input_ids'].to(self.device)
+                        attention_mask = batch['attention_mask'].to(self.device)
+                        labels = batch['labels'].to(self.device)
+                        
+                        outputs = self.model(
+                            input_ids=input_ids,
+                            attention_mask=attention_mask,
+                            labels=labels
+                        )
+                        
+                        val_loss += outputs.loss.item()
+                        val_steps += 1
+                        
+                        # Calculate accuracy
+                        predictions = torch.argmax(outputs.logits, dim=1)
+                        correct += (predictions == labels).sum().item()
+                        total += labels.size(0)
+                        
+                        # Clear GPU memory if needed
+                        if self.device.type == "cuda":
+                            torch.cuda.empty_cache()
+                
+                avg_val_loss = val_loss / val_steps
+                accuracy = correct / total
+                
+                self.logger.info(f"Train Loss: {avg_train_loss:.4f}")
+                self.logger.info(f"Val Loss: {avg_val_loss:.4f}")
+                self.logger.info(f"Accuracy: {accuracy:.4f}")
+                
+                # Save best model
+                if avg_val_loss < best_val_loss and not self._interrupt_requested:
+                    best_val_loss = avg_val_loss
+                    self.logger.info(f"Saving best model to {self.model_path}")
+                    self.model.save_pretrained(
+                        str(self.model_path),
+                        safe_serialization=True  # Use safetensors for saving
+                    )
+                    self.tokenizer.save_pretrained(str(self.model_path))
+                
+                # Monitor GPU at end of epoch
+                self._monitor_gpu_usage(f"End of Epoch {epoch + 1}")
+                
+                # Log memory usage
+                self.memory_tracker.log_memory(f"Epoch {epoch + 1}")
+            
+            return True
             
         except Exception as e:
             self.logger.error(f"Error during training: {str(e)}")
-            self.logger.error("Stack trace:", exc_info=True)
-            raise
+            return False
+            
+        finally:
+            self._cleanup()
+            if self._interrupt_requested:
+                logger.info("Training stopped gracefully. Partial progress has been saved.")
+                # Save final model state if requested
+                try:
+                    save_path = self.model_path / "interrupted_checkpoint"
+                    self.model.save_pretrained(str(save_path))
+                    self.tokenizer.save_pretrained(str(save_path))
+                    logger.info(f"Saved interrupted model state to {save_path}")
+                except Exception as e:
+                    logger.warning(f"Could not save interrupted model state: {e}")
 
 def main():
     """Main training function"""
+    # Setup GPU first
+    gpu_available = setup_gpu()
+    if not gpu_available:
+        logger.warning("\n⚠️ GPU acceleration is not available!")
+        logger.warning("   Training on CPU will be VERY slow (10-20x slower than GPU)")
+        logger.warning("   A single epoch could take hours instead of minutes")
+        response = input("\n❓ Do you want to continue with CPU training anyway? (y/n): ")
+        if response.lower() != 'y':
+            logger.info("Training cancelled.")
+            return
+        logger.info("\n⏳ Continuing with CPU training... (this will be slow)")
+    
+    # Load and preprocess data
     try:
-        # Configure TensorFlow for DirectML
-        os.environ['TF_DIRECTML_KERNEL_CACHE'] = '1'  # Enable kernel caching
-        os.environ['TF_DIRECTML_ENABLE_TELEMETRY'] = '0'  # Disable telemetry
-        os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'  # Enable memory growth
-        
-        # Force float32 for DirectML
-        tf.keras.mixed_precision.set_global_policy('float32')
-        
-        # Configure GPU devices
-        physical_devices = tf.config.list_physical_devices('GPU')
-        if physical_devices:
-            # Use first GPU (should be the NVIDIA one)
-            tf.config.set_visible_devices(physical_devices[0], 'GPU')
-            logger.info(f"Using DirectML GPU: {physical_devices[0].name}")
-            
-            # Configure memory growth
-            try:
-                for device in physical_devices:
-                    tf.config.experimental.set_memory_growth(device, True)
-            except Exception as e:
-                logger.info(f"Memory growth already configured: {e}")
-        else:
-            logger.warning("No DirectML GPU found, falling back to CPU")
-            
-        # Create a simple local BERT model
-        logger.info("\nCreating local BERT model...")
-        temp_model = create_simple_bert_model(max_length=128)  # Set consistent max_length
-        num_params = temp_model.count_params()
-        
-        logger.info(f"\nModel Information:")
-        logger.info(f"- Model: Simple BERT (2-layer)")
-        logger.info(f"- Parameters: {num_params:,}")
-        logger.info(f"- Size on disk: ~{num_params * 4 / (1024*1024):.1f}MB")
-        
-        # Ask for confirmation
-        response = input("\nWould you like to proceed with training? (yes/no): ")
-        if response.lower() != 'yes':
-            logger.info("Training cancelled by user")
+        data_path = Path("tensorflow_models/training_data/enhanced_wikipedia_training_data.csv")
+        if not data_path.exists():
+            logger.error(f"Data file not found: {data_path}")
             return
             
-        # Use model from bert_gpu_model directory
-        model_path = Path("tensorflow_models/bert_gpu_model")
-        
-        # Check if old model exists and verify its location
-        if model_path.exists():
-            try:
-                abs_path = model_path.resolve()
-                logger.info("\nFound existing model:")
-                logger.info(f"- Relative path: {model_path}")
-                logger.info(f"- Absolute path: {abs_path}")
-                
-                # Check if it contains model files
-                saved_model_pb = model_path / "saved_model.pb"
-                if saved_model_pb.exists():
-                    logger.info("- Verified: Contains saved_model.pb")
-                else:
-                    logger.info("- Warning: No saved_model.pb found")
-                    
-                variables_dir = model_path / "variables"
-                if variables_dir.exists():
-                    logger.info("- Verified: Contains variables directory")
-                else:
-                    logger.info("- Warning: No variables directory found")
-                
-                logger.info("\nThe model needs to be recreated with correct sequence length.")
-                delete_response = input("Would you like to delete the old model and create a new one? (yes/no): ")
-                if delete_response.lower() != 'yes':
-                    logger.info("Training cancelled - cannot proceed without recreating model")
-                    return
-                    
-                import shutil
-                logger.info("Removing old model...")
-                shutil.rmtree(model_path)
-            except Exception as e:
-                logger.error(f"Error verifying model directory: {e}")
+        logger.info(f"Loading data from {data_path}")
+        try:
+            df = pd.read_csv(data_path)
+            if 'text' not in df.columns or 'intent' not in df.columns:
+                logger.error("Data file must contain 'text' and 'intent' columns")
                 return
+        except Exception as e:
+            logger.error(f"Error reading data file: {e}")
+            return
             
-        # Create new model directory
-        model_path.mkdir(parents=True, exist_ok=True)
-        
-        logger.info("Creating and saving local BERT model...")
-        model = create_simple_bert_model(max_length=128)  # Set consistent max_length
-        
-        # Compile model before saving
-        model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-            metrics=['accuracy']
-        )
-        
-        model.save(str(model_path))
-        
-        # Create and save tokenizer
-        tokenizer = SimpleTokenizer(vocab_size=30522, max_length=128)  # Match model's max_length
-        tokenizer.save_pretrained(str(model_path))
-        logger.info("Saved model and tokenizer")
+        # Encode labels
+        label_encoder = LabelEncoder()
+        try:
+            y = label_encoder.fit_transform(df['intent'])
+            X = df['text'].fillna("")  # Handle any NaN values
+        except Exception as e:
+            logger.error(f"Error preprocessing data: {e}")
+            return
             
-        logger.info(f"\nUsing model at: {model_path}")
-        
-        # Initialize classifier with new parameters
-        classifier = BERTIntentClassifier(
-            model_path=str(model_path),
-            batch_size=16,
-            learning_rate=1e-4,
-            epochs=10,
-            max_length=128,  # Match model's max_length
-            use_gradient_checkpointing=False
-        )
-        
-        # Load and preprocess data
-        data_path = "tensorflow_models/training_data/enhanced_wikipedia_training_data.csv"
-        df = pd.read_csv(data_path)
-        texts = df['text'].values
-        labels = df['intent'].values
-        
-        # Convert to binary classification
-        binary_labels = np.array([1 if label == 'Finance' else 0 for label in labels])
+        logger.info(f"Found {len(label_encoder.classes_)} unique labels")
+        logger.info(f"Total samples: {len(df)}")
         
         # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            texts, binary_labels,
-            test_size=0.2,
-            random_state=42,
-            stratify=binary_labels
-        )
+        try:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y,
+                test_size=0.2,
+                random_state=42,
+                stratify=y
+            )
+        except Exception as e:
+            logger.error(f"Error splitting data: {e}")
+            return
+            
+        logger.info(f"Training samples: {len(X_train)}")
+        logger.info(f"Testing samples: {len(X_test)}")
         
-        # Train model
-        history = classifier.train(X_train, X_test, y_train, y_test)
+        # Model parameters
+        model_params = {
+            'model_path': "tensorflow_models/bert_gpu_model",
+            'num_labels': len(label_encoder.classes_),
+            'batch_size': 32,
+            'learning_rate': 2e-5,
+            'epochs': 5,
+            'max_length': 128,
+            'model_name': "prajjwal1/bert-tiny",  # Tiny 4-layer BERT model (~4.4M params)
+            'gradient_checkpointing': True
+        }
         
-        logger.info("✅ Training completed successfully!")
-        return history
-        
+        # Print model parameters and size info
+        print("\n🤖 Model Parameters:")
+        for key, value in model_params.items():
+            print(f"   {key}: {value}")
+        print("\n📊 Model Size:")
+        print("   - Architecture: TinyBERT")
+        print("   - Layers: 4")
+        print("   - Hidden size: 312")
+        print("   - Parameters: ~4.4M")  # Fixed from incorrect 14M
+        print("   - Disk size: ~17MB")  # Fixed from incorrect 53MB
+            
+        # Check if model exists
+        model_path = Path(model_params['model_path'])
+        if model_path.exists():
+            response = input("\n⚠️ Model directory exists. Delete and retrain? (y/n): ")
+            if response.lower() == 'y':
+                shutil.rmtree(model_path)
+                logger.info(f"Deleted existing model at {model_path}")
+            else:
+                print("Exiting without training.")
+                return
+                
+        # Confirm training
+        response = input("\n🚀 Start training with these parameters? (y/n): ")
+        if response.lower() != 'y':
+            print("Training cancelled.")
+            return
+            
+        # Initialize and train model
+        classifier = BERTIntentClassifier(**model_params)
+        if not classifier._build_model():
+            logger.error("Failed to build model")
+            return
+            
+        if classifier.train(X_train, X_test, y_train, y_test):
+            logger.info("Training completed successfully!")
+        else:
+            logger.error("Training failed")
+            
     except Exception as e:
-        logger.error(f"❌ Training failed: {str(e)}")
-        logger.error("Stack trace:", exc_info=True)
-        raise
-
-def create_simple_bert_model(vocab_size=30522, hidden_size=128, num_layers=2, max_length=128):
-    """Create a simple BERT-like model locally without downloading"""
-    input_ids = tf.keras.layers.Input(shape=(max_length,), dtype=tf.int32, name='input_ids')
-    attention_mask = tf.keras.layers.Input(shape=(max_length,), dtype=tf.int32, name='attention_mask')
-    
-    # Embedding layer
-    embedding_layer = tf.keras.layers.Embedding(vocab_size, hidden_size)(input_ids)
-    
-    # Transformer layers
-    x = embedding_layer
-    for _ in range(num_layers):
-        # Self-attention
-        attention_output = tf.keras.layers.MultiHeadAttention(
-            num_heads=4,
-            key_dim=hidden_size // 4
-        )(x, x, attention_mask=tf.cast(attention_mask[:, tf.newaxis, tf.newaxis, :], tf.float32))
-        x = tf.keras.layers.Add()([x, attention_output])
-        x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x)
-        
-        # Feed-forward network
-        ffn = tf.keras.Sequential([
-            tf.keras.layers.Dense(hidden_size * 4, activation='gelu'),
-            tf.keras.layers.Dense(hidden_size)
-        ])
-        x = tf.keras.layers.Add()([x, ffn(x)])
-        x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x)
-    
-    # Pooler
-    pooled_output = tf.keras.layers.Dense(hidden_size, activation='tanh')(x[:, 0, :])
-    
-    # Classification head
-    outputs = tf.keras.layers.Dense(2)(pooled_output)  # 2 classes
-    
-    model = tf.keras.Model(
-        inputs=[input_ids, attention_mask],
-        outputs=outputs
-    )
-    return model
+        logger.error(f"Error in main: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main() 
