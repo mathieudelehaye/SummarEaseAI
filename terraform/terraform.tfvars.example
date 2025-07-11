@@ -1,15 +1,20 @@
-# Azure Configuration
-subscription_id = "your-azure-subscription-id"
-tenant_id       = "your-azure-tenant-id"
-client_id       = "your-service-principal-client-id"
-client_secret   = "your-service-principal-client-secret"
+# Copy this file to terraform.tfvars and fill in your values
+resource_group_name = "xxx"
+location           = "xxx"
+environment        = "production"  # Use "production" for production deployment
+project_name       = "xxx"
+acr_name          = "xxx"  # Must be globally unique
 
-# Project Configuration
-resource_group_name = "rg-summarease-ai-dev"
-location           = "East US"
-environment        = "dev"
-project_name       = "summarease"
-acr_name          = "acrsummarease123"  # Must be globally unique
+# Azure Authentication
+subscription_id = "xxxxx-xxxx-xxxx-xxxx"  # Get from: az account show --query id -o tsv
+tenant_id       = "xxxxx-xxxx-xxxx-xxxx"  # Get from: Azure Portal -> Azure Active Directory -> Overview
+client_id       = "xxxxx-xxxx-xxxx-xxxx"  # Get from: Azure Portal -> App Registrations -> Application ID
+client_secret   = "xxxxx-xxxx-xxxx-xxxx"  # Get from: Azure Portal -> App Registrations -> Certificates & Secrets
+user_object_id  = "xxxxx-xxxx-xxxx-xxxx"  # Get from: az ad signed-in-user show --query id -o tsv
 
-# API Keys
-openai_api_key = "your-openai-api-key-here" 
+# Existing Container App Environment
+existing_container_env_name = "xxx"  # Name of your existing Container App Environment
+existing_container_env_rg   = "xxx"   # Resource Group of your existing Container App Environment
+
+# Application Secrets
+openai_api_key  = "sk-..."  # Copy from your .env file 

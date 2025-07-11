@@ -7,13 +7,13 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for resources"
   type        = string
-  default     = "East US"
+  default     = "West Europe"
 }
 
 variable "environment" {
-  description = "Environment name (dev, staging, prod)"
+  description = "Environment name (production, staging)"
   type        = string
-  default     = "dev"
+  default     = "production"
 }
 
 variable "project_name" {
@@ -28,6 +28,7 @@ variable "acr_name" {
   default     = "acrsummarease"
 }
 
+# Sensitive variables - these should be provided via terraform.tfvars
 variable "openai_api_key" {
   description = "OpenAI API key for AI services"
   type        = string
@@ -37,20 +38,41 @@ variable "openai_api_key" {
 variable "subscription_id" {
   description = "Azure subscription ID"
   type        = string
+  sensitive   = true
 }
 
 variable "tenant_id" {
   description = "Azure tenant ID"
   type        = string
+  sensitive   = true
 }
 
 variable "client_id" {
   description = "Azure service principal client ID"
   type        = string
+  sensitive   = true
 }
 
 variable "client_secret" {
   description = "Azure service principal client secret"
   type        = string
   sensitive   = true
+}
+
+variable "user_object_id" {
+  description = "Object ID of the user who needs access to Key Vault"
+  type        = string
+  sensitive   = true
+}
+
+variable "existing_container_env_name" {
+  description = "Name of the existing Container App Environment"
+  type        = string
+  default     = "calorie-tracker-env"
+}
+
+variable "existing_container_env_rg" {
+  description = "Resource Group of the existing Container App Environment"
+  type        = string
+  default     = "calorie-tracker-rg"
 } 

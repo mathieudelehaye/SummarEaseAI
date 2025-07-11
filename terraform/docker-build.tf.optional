@@ -1,21 +1,6 @@
-# Docker Provider for Image Building and Pushing
-terraform {
-  required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 3.0"
-    }
-  }
-}
-
-# Configure Docker provider
-provider "docker" {
-  registry_auth {
-    address  = azurerm_container_registry.main.login_server
-    username = azurerm_container_registry.main.admin_username
-    password = azurerm_container_registry.main.admin_password
-  }
-}
+# This file is for building and pushing Docker images to ACR
+# It should be run separately from the main infrastructure deployment
+# Rename this file to 'docker-build.tf.optional' to skip Docker operations during plan/apply
 
 # Build and push backend image
 resource "docker_image" "backend" {

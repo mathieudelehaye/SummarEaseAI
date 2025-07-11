@@ -1,23 +1,6 @@
 # SummarEaseAI - Azure Container Apps Deployment
 # Terraform configuration for microservices with scale-to-zero capability
 
-terraform {
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~>3.0"
-    }
-    azuread = {
-      source  = "hashicorp/azuread"
-      version = "~>2.0"
-    }
-  }
-}
-
-provider "azurerm" {
-  features {}
-}
-
 # Resource Group
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
@@ -57,12 +40,41 @@ resource "azurerm_log_analytics_workspace" "main" {
   }
 }
 
-# Container Apps Environment
-resource "azurerm_container_app_environment" "main" {
-  name                       = "${var.project_name}-env"
-  location                   = azurerm_resource_group.main.location
-  resource_group_name        = azurerm_resource_group.main.name
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+# Azure Key Vault
+resource "azurerm_key_vault" "main" {
+  name                        = "${var.project_name}-kv"
+  location                    = azurerm_resource_group.main.location
+  resource_group_name         = azurerm_resource_group.main.name
+  enabled_for_disk_encryption = true
+  tenant_id                   = var.tenant_id
+  soft_delete_retention_days  = 7
+  purge_protection_enabled    = false
+  sku_name                   = "standard"
+
+  access_policy {
+    tenant_id = var.tenant_id
+    object_id = var.client_id
+
+    secret_permissions = [
+      "Get",
+      "List",
+      "Set",
+      "Delete"
+    ]
+  }
+
+  # Add access policy for the current user
+  access_policy {
+    tenant_id = var.tenant_id
+    object_id = var.user_object_id
+
+    secret_permissions = [
+      "Get",
+      "List",
+      "Set",
+      "Delete"
+    ]
+  }
 
   tags = {
     Environment = var.environment
@@ -70,10 +82,30 @@ resource "azurerm_container_app_environment" "main" {
   }
 }
 
+# Store secrets in Key Vault
+resource "azurerm_key_vault_secret" "openai_api_key" {
+  name         = "openai-api-key"
+  value        = var.openai_api_key
+  key_vault_id = azurerm_key_vault.main.id
+}
+
+resource "azurerm_key_vault_secret" "backend_url" {
+  name         = "backend-url"
+  value        = "https://${azurerm_container_app.backend.latest_revision_fqdn}"
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_container_app.backend]
+}
+
+# Use existing Container App Environment instead of creating a new one
+data "azurerm_container_app_environment" "main" {
+  name                = var.existing_container_env_name
+  resource_group_name = var.existing_container_env_rg
+}
+
 # Backend Container App
 resource "azurerm_container_app" "backend" {
   name                         = "${var.project_name}-backend"
-  container_app_environment_id = azurerm_container_app_environment.main.id
+  container_app_environment_id = data.azurerm_container_app_environment.main.id
   resource_group_name          = azurerm_resource_group.main.name
   revision_mode                = "Single"
 
@@ -81,17 +113,12 @@ resource "azurerm_container_app" "backend" {
     container {
       name   = "backend"
       image  = "${azurerm_container_registry.main.login_server}/summarease-backend:latest"
-      cpu    = 1.0
+      cpu    = 0.5
       memory = "2Gi"
 
       env {
         name  = "FLASK_ENV"
         value = "production"
-      }
-
-      env {
-        name  = "TF_CPP_MIN_LOG_LEVEL"
-        value = "3"
       }
 
       env {
@@ -105,45 +132,39 @@ resource "azurerm_container_app" "backend" {
       }
 
       liveness_probe {
-        http_get {
-          path = "/health"
-          port = 5000
-        }
-        initial_delay_seconds = 30
-        period_seconds        = 30
+        transport = "HTTP"
+        port      = 5000
+        path      = "/health"
       }
 
       readiness_probe {
-        http_get {
-          path = "/health"
-          port = 5000
-        }
-        initial_delay_seconds = 10
-        period_seconds        = 5
+        transport = "HTTP"
+        port      = 5000
+        path      = "/health"
       }
     }
 
-    min_replicas = 0  # Scale to zero when not in use
-    max_replicas = 5  # Scale up to 5 instances under load
+    min_replicas = 0
+    max_replicas = 5
   }
 
   ingress {
     external_enabled = true
     target_port      = 5000
     traffic_weight {
-      percentage = 100
+      percentage      = 100
       latest_revision = true
     }
   }
 
   registry {
-    server   = azurerm_container_registry.main.login_server
-    username = azurerm_container_registry.main.admin_username
-    password_secret_name = "acr-password"
+    server               = azurerm_container_registry.main.login_server
+    username            = azurerm_container_registry.main.admin_username
+    password_secret_name = "registry-password"
   }
 
   secret {
-    name  = "acr-password"
+    name  = "registry-password"
     value = azurerm_container_registry.main.admin_password
   }
 
@@ -162,7 +183,7 @@ resource "azurerm_container_app" "backend" {
 # Frontend Container App
 resource "azurerm_container_app" "frontend" {
   name                         = "${var.project_name}-frontend"
-  container_app_environment_id = azurerm_container_app_environment.main.id
+  container_app_environment_id = data.azurerm_container_app_environment.main.id
   resource_group_name          = azurerm_resource_group.main.name
   revision_mode                = "Single"
 
@@ -170,8 +191,8 @@ resource "azurerm_container_app" "frontend" {
     container {
       name   = "frontend"
       image  = "${azurerm_container_registry.main.login_server}/summarease-frontend:latest"
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = 0.25
+      memory = "0.5Gi"
 
       env {
         name  = "STREAMLIT_SERVER_PORT"
@@ -189,51 +210,50 @@ resource "azurerm_container_app" "frontend" {
       }
 
       env {
-        name  = "API_BASE_URL"
-        value = "https://${azurerm_container_app.backend.latest_revision_fqdn}"
+        name        = "BACKEND_URL"
+        secret_name = "backend-url"
       }
 
       liveness_probe {
-        http_get {
-          path = "/_stcore/health"
-          port = 8501
-        }
-        initial_delay_seconds = 30
-        period_seconds        = 30
+        transport = "HTTP"
+        port      = 8501
+        path      = "/_stcore/health"
       }
 
       readiness_probe {
-        http_get {
-          path = "/_stcore/health"
-          port = 8501
-        }
-        initial_delay_seconds = 10
-        period_seconds        = 5
+        transport = "HTTP"
+        port      = 8501
+        path      = "/_stcore/health"
       }
     }
 
-    min_replicas = 0  # Scale to zero when not in use
-    max_replicas = 3  # Scale up to 3 instances under load
+    min_replicas = 0
+    max_replicas = 3
   }
 
   ingress {
     external_enabled = true
     target_port      = 8501
     traffic_weight {
-      percentage = 100
+      percentage      = 100
       latest_revision = true
     }
   }
 
   registry {
-    server   = azurerm_container_registry.main.login_server
-    username = azurerm_container_registry.main.admin_username
-    password_secret_name = "acr-password"
+    server               = azurerm_container_registry.main.login_server
+    username            = azurerm_container_registry.main.admin_username
+    password_secret_name = "registry-password"
   }
 
   secret {
-    name  = "acr-password"
+    name  = "registry-password"
     value = azurerm_container_registry.main.admin_password
+  }
+
+  secret {
+    name  = "backend-url"
+    value = "https://${azurerm_container_app.backend.latest_revision_fqdn}"
   }
 
   tags = {
