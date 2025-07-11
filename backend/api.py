@@ -10,14 +10,11 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-# Configure logging before any other imports
+# Configure logging before any other imports - console only for containers
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('backend.log', encoding='utf-8')
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -503,4 +500,6 @@ Content:
         return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    # Use PORT environment variable or default to 7860 for Hugging Face Spaces
+    port = int(os.getenv('PORT', 7860))
+    app.run(debug=True, host='0.0.0.0', port=port) 

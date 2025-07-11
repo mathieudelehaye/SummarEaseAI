@@ -18,3 +18,8 @@ existing_container_env_rg   = "xxx"   # Resource Group of your existing Containe
 
 # Application Secrets
 openai_api_key  = "sk-..."  # Copy from your .env file 
+
+# Hugging Face configuration
+huggingface_org = "your-username"    # Your Hugging Face username
+huggingface_token = "hf_..."         # Get from: https://huggingface.co/settings/tokens
+docker_registry = "hf.co"            # Hugging Face's Docker registry 

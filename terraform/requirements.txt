@@ -1,0 +1,6 @@
+# Hugging Face tools
+huggingface-hub>=0.19.4  # CLI tool and API client
+gradio>=4.8.0  # For Spaces UI (if needed)
+
+# Development tools
+python-dotenv>=1.0.0  # For environment variables

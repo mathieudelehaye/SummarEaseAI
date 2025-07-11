@@ -221,7 +221,7 @@ def main():
     # Create tabs
     tab1, tab2, tab3 = st.tabs([
         "🔍 Summarize", 
-        "🧠 Intent Analysis",
+        "🧠 Intent Analysis", 
         "📊 Analytics"
     ])
     
@@ -311,10 +311,10 @@ def main():
                             st.metric("Summary Length", f"{result.get('summary_length', 0):,} chars")
                             if 'article' in result:
                                 article_len = int(result['article'].get('length', 0))
-                                summary_len = int(result.get('summary_length', 0))
-                                if article_len > 0:
-                                    compression = (1 - summary_len / article_len) * 100
-                                    st.metric("Compression", f"{compression:.1f}%")
+                            summary_len = int(result.get('summary_length', 0))
+                            if article_len > 0:
+                                compression = (1 - summary_len / article_len) * 100
+                                st.metric("Compression", f"{compression:.1f}%")
                             
                         # Additional stats for multi-source
                         if 'summaries' in result:
@@ -341,11 +341,11 @@ def main():
         
         # Intent prediction form
         with st.form("intent_form"):
-            intent_text = st.text_area(
-                "Enter text to classify:",
-                placeholder="e.g., 'Tell me about the Apollo moon landing'",
-                height=100
-            )
+                intent_text = st.text_area(
+                    "Enter text to classify:",
+                    placeholder="e.g., 'Tell me about the Apollo moon landing'",
+                    height=100
+                )
             predict_button = st.form_submit_button("🧠 Predict Intent")
         
         if predict_button and intent_text:
@@ -370,7 +370,7 @@ def main():
                         # Create plotly gauge
                         import plotly.graph_objects as go
                         
-                        fig = go.Figure(go.Indicator(
+                    fig = go.Figure(go.Indicator(
                             mode = "gauge+number",
                             value = confidence,
                             domain = {'x': [0, 1], 'y': [0, 1]},
@@ -392,7 +392,7 @@ def main():
                                     'value': confidence
                                 }
                             }
-                        ))
+                    ))
                         
                         fig.update_layout(
                             height=200,
@@ -402,7 +402,7 @@ def main():
                             font={'color': "#666666"}
                         )
                         
-                        st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True)
     
     with tab3:
         st.header("📊 System Analytics")

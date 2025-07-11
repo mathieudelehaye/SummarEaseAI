@@ -65,6 +65,12 @@ variable "user_object_id" {
   sensitive   = true
 }
 
+variable "huggingface_token" {
+  description = "Hugging Face API token with write permissions"
+  type        = string
+  sensitive   = true  # Marks this as sensitive to hide in logs
+}
+
 variable "existing_container_env_name" {
   description = "Name of the existing Container App Environment"
   type        = string

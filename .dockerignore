@@ -1,51 +1,85 @@
-# Version control
-.git
-.gitignore
-
 # Python
-**/__pycache__
-**/*.pyc
-**/*.pyo
-**/*.pyd
-**/.Python
-**/.env
-**/.venv
-**/env/
-**/venv/
-**/ENV/
-**/env.bak/
-**/venv.bak/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
 
-# Development/IDE
-.idea
-.vscode
+# Virtual Environment
+venv/
+.venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
 *.swp
 *.swo
 
-# Testing
-**/tests/
+# Git
+.git/
+.gitignore
+
+# Terraform
+terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+
+# Tests
+tests/
 pytest.ini
-**/.pytest_cache/
+.coverage
+htmlcov/
 
 # Documentation
-**/*.md
 docs/
-screenshots/
+*.md
+LICENSE
 
-# Build
-**/*.log
-**/*.sqlite
-**/*.db
+# Docker
+.docker/
+docker-compose.yml
+Dockerfile*
 
-# Project specific
-frontend/
-terraform/
+# Azure
+.azure/
+
+# Misc
+.DS_Store
+*.log
+*.csv
+*.dat
+*.out
+*.pid
+*.gz
+*.zip
+
+# Keep only necessary model files
 ml_models/*
 !ml_models/bert_classifier.py
 !ml_models/intent_classifier.py
-!ml_models/bert_gpu_model/
-utils/*
-!utils/langchain_agents.py
-!utils/multi_source_agent.py
-!utils/openai_query_generator.py
-!utils/wikipedia_fetcher.py 
+!ml_models/bert_gpu_model/config.json
+!ml_models/bert_gpu_model/model.safetensors
+!ml_models/bert_gpu_model/tokenizer.json
+!ml_models/bert_gpu_model/vocab.txt
+!ml_models/bert_gpu_model/special_tokens_map.json
+!ml_models/bert_gpu_model/tokenizer_config.json
+!ml_models/bert_gpu_model/label_encoder.pkl 
