@@ -7,20 +7,24 @@ Completely FREE - no API costs!
 
 import logging
 import wikipedia
-import wikipediaapi
 import requests
 import re
 import json
 import time
 import random
 import pandas as pd
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union
 from pathlib import Path
 import sys
+import warnings
+from bs4 import BeautifulSoup
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Suppress BeautifulSoup warning about parser
+warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 class WikipediaPortalFetcher:
     """Fetch training data from Wikipedia portals"""
@@ -28,12 +32,8 @@ class WikipediaPortalFetcher:
     def __init__(self):
         # Set user agent for Wikipedia API compliance
         wikipedia.set_user_agent("SummarEaseAI-Training/1.0 (https://github.com/your-repo)")
-        self.wiki_wiki = wikipediaapi.Wikipedia(
-            language='en',
-            user_agent='SummarEaseAI-Training/1.0 (https://github.com/your-repo) Python/WikipediaAPI'
-        )
         
-        # Use same 6 categories as intent classifier
+        # Use 6 categories as intent classifier
         self.portals = {
             'History': {
                 'portal_url': 'https://en.wikipedia.org/wiki/Portal:History',
@@ -43,7 +43,18 @@ class WikipediaPortalFetcher:
             'Music': {
                 'portal_url': 'https://en.wikipedia.org/wiki/Portal:Music',
                 'intent_label': 'Music',
-                'subcategories': ['Popular music', 'Classical music', 'Jazz', 'Rock music', 'Hip hop', 'Music history']
+                'subcategories': [
+                    'The Beatles',  # Primary focus
+                    'Beatles songs',
+                    'Beatles albums',
+                    'John Lennon',
+                    'Paul McCartney',
+                    'George Harrison',
+                    'Ringo Starr',
+                    'Rock music',
+                    'Popular music',
+                    'Music history'
+                ]
             },
             'Science': {
                 'portal_url': 'https://en.wikipedia.org/wiki/Portal:Science',
@@ -58,66 +69,50 @@ class WikipediaPortalFetcher:
             'Technology': {
                 'portal_url': 'https://en.wikipedia.org/wiki/Portal:Technology',
                 'intent_label': 'Technology',
-                'subcategories': ['Computing', 'Electronics', 'Engineering', 'Internet', 'Software', 'Technological innovations']
+                'subcategories': [
+                    'Nvidia',  # Added specific focus
+                    'Graphics processing unit',
+                    'Computing',
+                    'Electronics',
+                    'Engineering',
+                    'Internet',
+                    'Software',
+                    'Technological innovations'
+                ]
             },
             'Finance': {
                 'portal_url': 'https://en.wikipedia.org/wiki/Portal:Finance',
                 'intent_label': 'Finance',
-                'subcategories': ['Economics', 'Banking', 'Investment', 'Stock market', 'Business', 'Financial history']
+                'subcategories': [
+                    'Fischer Black',  # Added specific focus
+                    'Black-Scholes model',
+                    'Nasdaq',  # Added specific focus
+                    'Stock market',
+                    'Investment',
+                    'Banking',
+                    'Economics',
+                    'Financial history'
+                ]
             }
         }
         
         # Set up save directory
-        self.save_dir = Path("tensorflow_models/training_data")
+        self.save_dir = Path("ml_models/training_data")
         self.save_dir.mkdir(parents=True, exist_ok=True)
         
-        # Load existing data if available
-        self.data_file = self.save_dir / "enhanced_wikipedia_training_data.csv"
+        # Initialize with new data file path
+        self.data_file = self.save_dir / "wikipedia_training_data.csv"
         self.existing_data = pd.DataFrame()
         self.existing_urls = set()
         
-        if self.data_file.exists():
-            try:
-                self.existing_data = pd.read_csv(self.data_file)
-                
-                # Handle missing columns
-                required_columns = ['title', 'text', 'text_clean', 'intent', 'url', 'length', 'word_count']
-                missing_columns = [col for col in required_columns if col not in self.existing_data.columns]
-                
-                if missing_columns:
-                    logger.warning(f"Adding missing columns: {missing_columns}")
-                    for col in missing_columns:
-                        self.existing_data[col] = ''
-                
-                # Filter out any rows with invalid categories
-                valid_categories = list(self.portals.keys())
-                invalid_mask = ~self.existing_data['intent'].isin(valid_categories)
-                if invalid_mask.any():
-                    invalid_rows = self.existing_data[invalid_mask]
-                    logger.warning(f"Removing {len(invalid_rows)} rows with invalid categories:")
-                    for cat, count in invalid_rows['intent'].value_counts().items():
-                        logger.warning(f"   {cat}: {count} samples")
-                    self.existing_data = self.existing_data[~invalid_mask]
-                
-                # Get existing URLs, handling the case where url column might be empty
-                if 'url' in self.existing_data.columns:
-                    self.existing_urls = set(self.existing_data['url'].dropna())
-                
-                # Clean up any rows with missing required data
-                self.existing_data = self.existing_data.dropna(subset=['text', 'intent'])
-                
-                logger.info(f"Loaded {len(self.existing_data)} existing samples")
-                logger.info("\nExisting samples per category:")
-                for intent, count in self.existing_data['intent'].value_counts().items():
-                    logger.info(f"   {intent}: {count} samples")
-                
-            except Exception as e:
-                logger.warning(f"Error loading existing data: {e}")
-                logger.warning("Starting with empty dataset")
-                self.existing_data = pd.DataFrame(columns=required_columns)
+        # Initialize empty DataFrame with required columns
+        self.existing_data = pd.DataFrame(columns=[
+            'title', 'text', 'text_clean', 'intent', 'url', 'length', 'word_count'
+        ])
         
-        logger.info("WikipediaPortalFetcher initialized with 6 standard categories")
+        logger.info("WikipediaPortalFetcher initialized with 6 balanced categories")
         logger.info(f"Save directory: {self.save_dir}")
+        logger.info(f"Data file: {self.data_file}")
 
     def clean_text(self, text: str) -> str:
         """Clean text for model training"""
@@ -157,7 +152,7 @@ class WikipediaPortalFetcher:
                 logger.debug(f"Searching: {search_query}")
                 
                 try:
-                    # Search Wikipedia
+                    # Search Wikipedia using wikipedia package
                     search_results = wikipedia.search(search_query, results=max_pages//len(subcategories))
                     all_pages.extend(search_results)
                     
@@ -234,7 +229,7 @@ class WikipediaPortalFetcher:
     def get_subcategory_pages(self, portal_url: str, subcategory: str) -> List[str]:
         """Get list of page titles from a subcategory"""
         try:
-            # Search for pages in subcategory
+            # Search for pages in subcategory using wikipedia package
             search_query = f"{subcategory} {portal_url.split('Portal:')[1]}"
             pages = wikipedia.search(search_query, results=20)
             return pages
@@ -275,193 +270,155 @@ class WikipediaPortalFetcher:
                     
         return should_fetch
 
-    def fetch_all_portal_data(self, max_articles_per_category: int = 50) -> None:
-        """Fetch data from all Wikipedia portals"""
-        try:
-            # Get categories that need more samples
-            categories_to_fetch = self.get_categories_to_fetch()
+    def check_category_balance(self) -> Dict[str, int]:
+        """
+        Check the balance of categories in existing data
+        Returns dict with category counts and identifies imbalances
+        """
+        if self.existing_data.empty:
+            return {}
             
-            # Track overall stats
+        # Get counts per category
+        category_counts = self.existing_data['intent'].value_counts().to_dict()
+        
+        # Calculate stats
+        min_count = min(category_counts.values())
+        max_count = max(category_counts.values())
+        mean_count = sum(category_counts.values()) / len(category_counts)
+        
+        # Log the balance status
+        logger.info("\nCategory Balance Status:")
+        logger.info(f"Minimum samples: {min_count}")
+        logger.info(f"Maximum samples: {max_count}")
+        logger.info(f"Average samples: {mean_count:.1f}")
+        logger.info("\nSamples per category:")
+        
+        # Check each category
+        imbalanced_categories = []
+        for category, count in category_counts.items():
+            status = ""
+            if count > mean_count * 1.5:  # 50% more than average
+                status = "⚠️ OVER-REPRESENTED"
+                imbalanced_categories.append((category, count, "over"))
+            elif count < mean_count * 0.75:  # 25% less than average
+                status = "⚠️ UNDER-REPRESENTED"
+                imbalanced_categories.append((category, count, "under"))
+                
+            logger.info(f"{category}: {count} samples {status}")
+            
+        # Provide recommendations
+        if imbalanced_categories:
+            logger.info("\nRecommendations:")
+            for category, count, status in imbalanced_categories:
+                if status == "over":
+                    logger.info(f"- Consider skipping {category} (has {count} samples, significantly more than average)")
+                else:
+                    logger.info(f"- Prioritize collecting {category} (only {count} samples, significantly less than average)")
+                    
+        return category_counts
+
+    def fetch_all_portal_data(self, max_articles_per_category: int = 50) -> bool:
+        """
+        Fetch data from all portals
+        Returns True if successful, False otherwise
+        """
+        try:
+            # Check current balance
+            logger.info("Checking current category balance...")
+            category_counts = self.check_category_balance()
+            
+            if category_counts:
+                # Ask about over-represented categories
+                min_count = min(category_counts.values())
+                for category, count in category_counts.items():
+                    if count > min_count * 1.5:  # 50% more samples than minimum
+                        logger.warning(f"\n⚠️ {category} has {count} samples (minimum is {min_count})")
+                        logger.warning(f"Consider skipping {category} to maintain balance")
+                        response = input(f"Do you want to collect more {category} samples? (y/n): ")
+                        if response.lower() != 'y':
+                            logger.info(f"Skipping {category}")
+                            continue
+            
+            # Proceed with data collection
             total_new = 0
             total_skipped = 0
             
-            # Show initial distribution
-            logger.info("\n=== Initial Category Distribution ===")
-            initial_counts = self.existing_data['intent'].value_counts()
-            min_samples = initial_counts.min() if not initial_counts.empty else 0
-            for category in self.portals.keys():
-                current_count = initial_counts.get(category, 0)
-                logger.info(f"   {category}: {current_count} samples")
-                if not categories_to_fetch[category]:
-                    logger.warning(f"   ⚠️  SKIPPING {category} - Already has {current_count} samples (50% more than minimum of {min_samples})")
-            
-            for category, portal_info in self.portals.items():
-                if not categories_to_fetch[category]:
-                    continue
-                    
-                logger.info(f"\n{'='*60}")
-                logger.info(f"Processing {category} portal...")
-                logger.info(f"{'='*60}")
+            for portal_name, portal_info in self.portals.items():
+                logger.info(f"\nProcessing {portal_name} portal...")
                 
-                # Show existing samples for this category
-                existing_count = len(self.existing_data[self.existing_data['intent'] == category])
-                logger.info(f"Existing {category} samples: {existing_count}")
+                # Adjust max articles based on current balance
+                adjusted_max = max_articles_per_category
+                if category_counts:
+                    current_count = category_counts.get(portal_name, 0)
+                    min_count = min(category_counts.values())
+                    if current_count > min_count:
+                        adjusted_max = min(max_articles_per_category, min_count - current_count)
+                        if adjusted_max <= 0:
+                            logger.info(f"Skipping {portal_name} - already has sufficient samples")
+                            continue
+                        logger.info(f"Adjusted target: {adjusted_max} articles to maintain balance")
                 
-                try:
-                    new_samples, skipped = self.fetch_portal_data(
-                        portal_info['portal_url'],
-                        portal_info['intent_label'],
-                        portal_info['subcategories'],
-                        max_articles_per_category
-                    )
-                    total_new += new_samples
-                    total_skipped += skipped
-                    
-                    # Show updated count for this category
-                    new_count = len(self.existing_data[self.existing_data['intent'] == category])
-                    logger.info(f"\nCategory {category} update:")
-                    logger.info(f"   Before: {existing_count} samples")
-                    logger.info(f"   Added: {new_samples} samples")
-                    logger.info(f"   After: {new_count} samples")
-                    logger.info(f"   Skipped: {skipped} duplicates")
-                    
-                    # Save after each category in case of errors
-                    if new_samples > 0:
-                        self.save_data()
+                new_samples, skipped = self.fetch_portal_data(
+                    portal_info['portal_url'],
+                    portal_info['intent_label'],
+                    portal_info['subcategories'],
+                    adjusted_max
+                )
+                
+                total_new += new_samples
+                total_skipped += skipped
+                
+                if new_samples > 0:
+                    # Save after each portal in case of errors
+                    if not self.save_data():
+                        logger.error(f"Failed to save data after {portal_name}")
+                        return False
                         
-                except Exception as e:
-                    logger.error(f"Error processing {category} portal: {e}")
-                    continue
+            logger.info(f"\nData collection complete! Added {total_new} samples, skipped {total_skipped}")
             
-            # Final save and stats
-            if total_new > 0:
-                self.save_data()
-                
-            logger.info("\n=== Final Category Distribution ===")
-            final_counts = self.existing_data['intent'].value_counts()
-            for category in self.portals.keys():
-                initial = initial_counts.get(category, 0)
-                final = final_counts.get(category, 0)
-                diff = final - initial
-                if diff > 0:
-                    logger.info(f"   {category}: {initial} → {final} (+{diff} samples)")
-                else:
-                    if not categories_to_fetch[category]:
-                        logger.info(f"   {category}: {initial} → {final} (SKIPPED - already balanced)")
-                    else:
-                        logger.info(f"   {category}: {initial} → {final} (no new samples)")
+            # Final balance check
+            logger.info("\nFinal category balance:")
+            self.check_category_balance()
             
-            logger.info(f"\nCollection complete! Added {total_new} new samples, skipped {total_skipped} duplicates")
+            return True
             
         except Exception as e:
-            logger.error(f"Error in fetch_all_portal_data: {e}")
-            raise
+            logger.error(f"Error collecting portal data: {e}")
+            return False
 
     def fetch_page_training_data(self, page_title: str, intent_label: str) -> Optional[Dict]:
-        """Fetch and process a single Wikipedia page"""
+        """Fetch training data for a single page"""
         try:
-            # Get page
-            page = wikipedia.page(page_title, auto_suggest=False)
+            # Get page content using wikipedia package, preserving exact title
+            page = wikipedia.page(title=page_title, auto_suggest=False)
             
-            # Check for duplicates by URL and title
-            if page.url in self.existing_urls:
-                # Find the existing article details
-                existing_article = self.existing_data[self.existing_data['url'] == page.url].iloc[0]
-                logger.info(f"PAGE {page.title} SKIPPED BECAUSE ALREADY DOWNLOADED AND UNCHANGED (matches {existing_article['title']})")
+            # Skip if no content
+            if not page or not page.content:
+                logger.info(f"PAGE {page_title} SKIPPED - No content")
                 return None
-            
-            # Also check title similarity to catch redirects/variants
-            if not self.existing_data.empty:
-                # Convert titles to lowercase for comparison
-                page_title_lower = page.title.lower()
-                existing_titles = self.existing_data['title'].str.lower()
                 
-                # Check for exact matches
-                exact_matches = self.existing_data[existing_titles == page_title_lower]
-                if not exact_matches.empty:
-                    logger.info(f"PAGE {page.title} SKIPPED BECAUSE ALREADY DOWNLOADED AND UNCHANGED (exact title match)")
-                    return None
-                
-                # Check for titles that contain this one or vice versa
-                similar_titles = existing_titles[
-                    existing_titles.str.contains(page_title_lower, regex=False) |
-                    existing_titles.apply(lambda x: page_title_lower in x)
-                ]
-                if not similar_titles.empty:
-                    similar_articles = self.existing_data[existing_titles.isin(similar_titles)]
-                    logger.info(f"PAGE {page.title} SKIPPED BECAUSE ALREADY DOWNLOADED AND UNCHANGED (similar to: {', '.join(similar_articles['title'].values[:3])})")
-                    return None
+            # Clean and prepare text
+            text = page.content
+            text_clean = self.clean_text(text)
             
-            # Extract intro paragraph (first paragraph)
-            intro = page.summary.split('\n')[0] if page.summary else ""
-            
-            # Clean the intro text
-            intro = re.sub(r'\([^)]*\)', '', intro)  # Remove parentheses
-            intro = re.sub(r'\s+', ' ', intro).strip()  # Clean whitespace
-            
-            # Skip very short articles
-            if len(intro) < 50:
-                logger.info(f"PAGE {page.title} SKIPPED BECAUSE TOO SHORT ({len(intro)} chars)")
+            # Skip if too short after cleaning
+            if len(text_clean.split()) < 50:
+                logger.info(f"PAGE {page_title} SKIPPED - Too short")
                 return None
-            
+                
             # Create training sample
-            training_data = {
-                'title': page.title,
-                'text': intro,
-                'text_clean': self.clean_text(intro),
+            sample = {
+                'title': page_title,  # Use original title
+                'text': text,
+                'text_clean': text_clean,
                 'intent': intent_label,
                 'url': page.url,
-                'length': len(intro),
-                'word_count': len(intro.split())
+                'length': len(text),
+                'word_count': len(text_clean.split())
             }
             
-            logger.info(f"✅ DOWNLOADED: {page.title} → {intent_label}")
-            return training_data
-            
-        except wikipedia.exceptions.DisambiguationError as e:
-            # Try first disambiguation option
-            try:
-                page = wikipedia.page(e.options[0], auto_suggest=False)
-                
-                # Check for duplicates
-                if page.url in self.existing_urls:
-                    existing_article = self.existing_data[self.existing_data['url'] == page.url].iloc[0]
-                    logger.info(f"PAGE {e.options[0]} SKIPPED BECAUSE ALREADY DOWNLOADED AND UNCHANGED (disambiguation resolves to {existing_article['title']})")
-                    return None
-                
-                # Check title similarity for disambiguation
-                if not self.existing_data.empty:
-                    page_title_lower = page.title.lower()
-                    exact_matches = self.existing_data[self.existing_data['title'].str.lower() == page_title_lower]
-                    if not exact_matches.empty:
-                        logger.info(f"PAGE {e.options[0]} SKIPPED BECAUSE ALREADY DOWNLOADED AND UNCHANGED (disambiguation exact match)")
-                        return None
-                
-                intro = page.summary.split('\n')[0] if page.summary else ""
-                intro = re.sub(r'\([^)]*\)', '', intro)
-                intro = re.sub(r'\s+', ' ', intro).strip()
-                
-                if len(intro) >= 50:
-                    return {
-                        'title': page.title,
-                        'text': intro,
-                        'text_clean': self.clean_text(intro),
-                        'intent': intent_label,
-                        'url': page.url,
-                        'length': len(intro),
-                        'word_count': len(intro.split()),
-                        'disambiguation_resolved': True
-                    }
-                else:
-                    logger.info(f"PAGE {e.options[0]} SKIPPED BECAUSE TOO SHORT ({len(intro)} chars)")
-            except Exception as e:
-                logger.info(f"PAGE {page_title} SKIPPED BECAUSE DISAMBIGUATION FAILED: {str(e)}")
-            
-            return None
-            
-        except wikipedia.exceptions.PageError:
-            logger.info(f"PAGE {page_title} SKIPPED BECAUSE NOT FOUND")
-            return None
+            logger.info(f"Added {page_title}")
+            return sample
             
         except Exception as e:
             logger.info(f"PAGE {page_title} SKIPPED BECAUSE ERROR: {str(e)}")
@@ -469,35 +426,31 @@ class WikipediaPortalFetcher:
     
     def collect_portal_training_data(self, portal_name: str, max_pages: int = 50) -> List[Dict]:
         """Collect training data from a specific portal"""
-        logger.info(f"🚀 Collecting training data for portal: {portal_name}")
-        
-        # Search for pages
-        page_titles = self.search_portal_pages(portal_name, max_pages)
-        
-        if not page_titles:
-            logger.warning(f"No pages found for portal: {portal_name}")
+        try:
+            # Get portal info
+            portal_info = self.portals[portal_name]
+            
+            # Get pages from portal
+            pages = self.search_portal_pages(portal_name, max_pages)
+            
+            # Process each page
+            training_data = []
+            for page_title in pages:
+                try:
+                    # Get page data
+                    page_data = self.fetch_page_training_data(page_title, portal_info['intent_label'])
+                    if page_data:
+                        training_data.append(page_data)
+                        
+                except Exception as e:
+                    logger.error(f"Error processing page {page_title}: {e}")
+                    continue
+                    
+            return training_data
+            
+        except Exception as e:
+            logger.error(f"Error collecting portal data for {portal_name}: {e}")
             return []
-        
-        intent_label = self.portals[portal_name]['intent_label']
-        training_data = []
-        
-        logger.info(f"📄 Fetching {len(page_titles)} pages...")
-        
-        for i, page_title in enumerate(page_titles, 1):
-            logger.info(f"   {i}/{len(page_titles)}: {page_title}")
-            
-            data = self.fetch_page_training_data(page_title, intent_label)
-            if data:
-                training_data.append(data)
-            
-            # Be respectful to Wikipedia - add delays
-            if i % 10 == 0:
-                time.sleep(2)
-            else:
-                time.sleep(0.3)
-        
-        logger.info(f"✅ Successfully collected {len(training_data)} new samples for {portal_name}")
-        return training_data
     
     def create_beatles_specific_samples(self) -> List[Dict]:
         """Create specific samples to fix Beatles → Science misclassification"""
@@ -526,7 +479,10 @@ class WikipediaPortalFetcher:
         return samples
 
     def collect_beatles_data(self, max_articles: int = 30) -> bool:
-        """Collect additional Beatles-specific training data"""
+        """
+        Collect Beatles-specific training data
+        Returns True if successful, False otherwise
+        """
         try:
             logger.info("\nCollecting Beatles-specific training data...")
             

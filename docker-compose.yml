@@ -14,9 +14,9 @@ services:
       - TF_CPP_MIN_LOG_LEVEL=3
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      # Mount model directories for persistence
-      - ./tensorflow_models:/app/tensorflow_models
-      - ./saved_model:/app/saved_model
+      - ./backend:/app/backend
+      - ./ml_models:/app/ml_models
+      - ./utils:/app/utils
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s

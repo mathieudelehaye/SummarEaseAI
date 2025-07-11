@@ -143,15 +143,15 @@ variables.data-*
 variables.index
 *.pb
 # Model artifacts and metadata
-tensorflow_models/*/keras_metadata.pb
-tensorflow_models/*/saved_model.pb
-tensorflow_models/*/tokenizer/vocab.txt
+ml_models/*/keras_metadata.pb
+ml_models/*/saved_model.pb
+ml_models/*/tokenizer/vocab.txt
 # Complete model directories
-tensorflow_models/bert_gpu_models/
-tensorflow_models/*/bert_gpu_model/
-tensorflow_models/*/tokenizer/
-tensorflow_models/lstm_model/  # LSTM model directory
-tensorflow_models/*/lstm_model/  # Nested LSTM model directories
+ml_models/bert_gpu_models/
+ml_models/*/bert_gpu_model/
+ml_models/*/tokenizer/
+ml_models/lstm_model/  # LSTM model directory
+ml_models/*/lstm_model/  # Nested LSTM model directories
 # Training data and temporary files
 *_training_sample*.json
 enhanced_training_data.csv
@@ -237,5 +237,5 @@ cython_debug/
 # TensorFlow and ML models
 *.h5
 *.pickle
-tensorflow_models/saved_model/
+ml_models/saved_model/
 *.pkl

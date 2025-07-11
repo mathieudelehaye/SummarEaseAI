@@ -26,7 +26,7 @@ COPY . .
 ENV PYTHONPATH=/app
 
 # Create directory for models
-RUN mkdir -p /app/tensorflow_models/bert_gpu_models
+RUN mkdir -p /app/ml_models/bert_gpu_models
 RUN mkdir -p /app/saved_model
 
 # Expose port

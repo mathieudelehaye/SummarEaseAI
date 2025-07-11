@@ -1,0 +1,46 @@
+# Core scientific computing dependencies
+numpy<2.0.0  # For compatibility with PyTorch's current build
+scipy==1.11.4
+pandas==2.1.4
+scikit-learn==1.3.2
+
+# PyTorch and CUDA dependencies
+--index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1+cu121  # Latest version for better performance
+
+# Hugging Face ecosystem
+transformers>=4.36.0
+datasets==4.0.0
+evaluate==0.4.5
+accelerate==1.8.1
+safetensors>=0.4.1
+
+# Training visualization and logging
+tensorboard==2.19.0
+wandb==0.21.0
+
+# Data processing and utilities
+pyarrow==20.0.0  # Required by datasets
+regex==2023.10.3
+Pillow==10.1.0
+tqdm>=4.66.3
+psutil==7.0.0
+dill==0.3.8
+xxhash==3.5.0
+fsspec==2025.3.0
+
+# Wikipedia data fetching
+wikipedia==1.4.0  # For article search and content
+Wikipedia-API==0.8.1  # For API access
+beautifulsoup4==4.13.4  # Required by wikipedia package
+
+# Required by wandb
+gitpython==3.1.44
+pydantic<3,>=2.11.7
+
+# Required by various dependencies
+aiohttp==3.12.14
+protobuf==6.31.1
+werkzeug==3.1.3
+markdown==3.8.2
+grpcio==1.73.1 

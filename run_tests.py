@@ -46,7 +46,7 @@ def run_tests(test_args=None):
         '-v',                    # Verbose output
         '--tb=short',           # Short traceback format
         '--cov=backend',        # Coverage for backend
-        '--cov=tensorflow_models',  # Coverage for models
+        '--cov=ml_models',  # Coverage for models
         '--cov=utils',          # Coverage for utilities
         '--cov-report=term-missing',  # Show missing lines
         '--cov-report=html:htmlcov',  # HTML coverage report

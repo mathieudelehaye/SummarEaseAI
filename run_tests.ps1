@@ -57,7 +57,7 @@ switch ($TestType.ToLower()) {
     }
     "coverage" {
         Write-Host "🎯 Running tests with coverage..." -ForegroundColor Magenta
-        & pytest tests/ -v --cov=backend --cov=tensorflow_models --cov=utils --cov-report=term-missing --cov-report=html:htmlcov
+        & pytest tests/ -v --cov=backend --cov=ml_models --cov=utils --cov-report=term-missing --cov-report=html:htmlcov
     }
     default {
         Write-Host "🎯 Running all tests..." -ForegroundColor Magenta
