@@ -1,11 +1,11 @@
 # 🚀 SummarEaseAI 
 
-**SummarEaseAI** is an AI-powered chatbot that intelligently summarizes Wikipedia articles using state-of-the-art machine learning technologies. It combines **TensorFlow neural networks** for intent classification, **🤗 Hugging Face Transformers** for local AI capabilities, **LangChain** for prompt orchestration, and **OpenAI's GPT** models for high-quality summarization—all wrapped in a beautiful Streamlit interface.
+**SummarEaseAI** is an AI-powered chatbot that intelligently summarizes Wikipedia articles using state-of-the-art machine learning technologies. It combines **🤗 Hugging Face Transformers** (TinyBERT - 4M parameters) for intent classification, **LangChain** for prompt orchestration, **RAG** (Retrieval-Augmented Generation) via Wikipedia API, and **OpenAI's GPT** (GPT-3.5-turbo - 175B parameters) models for high-quality summarization—all wrapped in a beautiful Streamlit interface.
 
 <div align="center">
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
-![TensorFlow](https://img.shields.io/badge/TensorFlow-2.13+-orange.svg)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange.svg)
 ![HuggingFace](https://img.shields.io/badge/🤗_Transformers-4.35+-yellow.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)
@@ -27,9 +27,9 @@
 <p align="left">
     <img src="screenshots/Screenshot01.png" alt="Intent Analysis Dashboard" width="80%">
 </p>
-*Advanced intent classification dashboard with TensorFlow LSTM and GPU BERT models, featuring interactive confidence gauges and detailed model performance metrics.*
+*Advanced intent classification dashboard with Hugging Face TinyBERT model (PyTorch-based), featuring interactive confidence gauges and detailed model performance metrics.*
 
-### 📊 Model Comparison & Analytics
+### 🎯 Model Comparison & Analytics
 <p align="left">
     <img src="screenshots/Screenshot02.png" alt="Model Comparison Analytics" width="80%">
 </p>    
@@ -40,10 +40,10 @@
 ## 🎯 Currently Working Features ✅
 
 ### 🧠 **Intent Recognition**
-- **TensorFlow Neural Network**: ✅ **WORKING** - Custom Bidirectional LSTM model for intent classification
+- **Hugging Face TinyBERT**: ✅ **WORKING** - Transformer-based model for intent classification (4M parameters)
 - **Keyword-based Fallback**: ✅ **WORKING** - Reliable backup intent classification system
 - **9 Intent Categories**: ✅ **WORKING** - History, Science, Biography, Technology, Arts (includes Music), Sports, Politics, Geography, General
-- **Real-time Confidence Scoring**: ✅ **WORKING** - Interactive gauges showing prediction confidence
+- **Real-time Confidence Scoring**: ✅ **WORKING** - Interactive gauges showing prediction confidence using Plotly
 
 ### 🤖 **Multi-Source Intelligence**
 - **🤖 Multi-Source Agent**: ✅ **WORKING** - Advanced multi-article synthesis with LangChain agents
@@ -54,13 +54,14 @@
 - **Comprehensive Synthesis**: ✅ **WORKING** - Combines multiple Wikipedia articles into coherent summaries
 
 ### ✂️ **Summarization Engines**
-- **OpenAI + LangChain**: ✅ **WORKING** - High-quality cloud-based summarization
+- **OpenAI GPT-3.5-turbo**: ✅ **WORKING** - High-quality cloud-based summarization (175B parameters)
 - **Multi-Source Synthesis**: ✅ **WORKING** - Combines multiple articles with intelligent agents
 - **Length Control**: ✅ **WORKING** - Customizable summary length (10-100 lines)
 - **Intent-Aware Processing**: ✅ **WORKING** - Context-based summarization adaptation
 
-### 📚 **Wikipedia Integration**
+### 📚 **Wikipedia Integration & RAG**
 - **Smart Search**: ✅ **WORKING** - Automatic fallback to search when direct articles aren't found
+- **RAG Pipeline**: ✅ **WORKING** - Retrieval-Augmented Generation using Wikipedia as knowledge base
 - **Disambiguation Handling**: ✅ **WORKING** - Intelligent resolution of ambiguous Wikipedia pages
 - **Content Sanitization**: ✅ **WORKING** - Handles Wikipedia markup and special characters
 - **Multi-Article Support**: ✅ **WORKING** - Fetch and process multiple related articles
@@ -95,17 +96,18 @@
 
 ## 🛠️ Technology Stack
 
-| Component | Technology | Status | Purpose |
-|-----------|------------|--------|---------|
-| **Frontend** | Streamlit | ✅ **WORKING** | Interactive web interface |
-| **Backend** | Flask + CORS | ✅ **WORKING** | RESTful API server |
-| **Intent Classification** | TensorFlow + GPU BERT | ✅ **WORKING** | Dual ML approach |
-| **Multi-Source Agents** | LangChain + OpenAI | ✅ **WORKING** | Intelligent article synthesis |
-| **Summarization** | LangChain + OpenAI | ✅ **WORKING** | Cloud-based summarization |
-| **Local AI** | 🤗 Transformers | 🧪 **UNDER TEST** | Local model inference |
-| **Semantic Search** | 🤗 Sentence Transformers | 🧪 **UNDER TEST** | Meaning-based retrieval |
-| **Data Source** | Wikipedia API | ✅ **WORKING** | Article content |
-| **Visualization** | Plotly | ✅ **WORKING** | Interactive charts |
+| Component | Technology | Parameters | Status | Purpose |
+|-----------|------------|------------|---------|---------|
+| **Frontend** | Streamlit | N/A | ✅ **WORKING** | Interactive web interface |
+| **Backend** | Flask + CORS | N/A | ✅ **WORKING** | RESTful API server |
+| **Intent Classification** | 🤗 TinyBERT | 4M | ✅ **WORKING** | Neural intent classification |
+| **Multi-Source Agents** | LangChain + OpenAI | 175B | ✅ **WORKING** | Intelligent article synthesis |
+| **RAG Pipeline** | Wikipedia + LangChain | N/A | ✅ **WORKING** | Knowledge retrieval |
+| **Summarization** | LangChain + OpenAI | 175B | ✅ **WORKING** | Cloud-based summarization |
+| **Local AI** | 🤗 Transformers | Varies | 🧪 **UNDER TEST** | Local model inference |
+| **Semantic Search** | 🤗 Sentence Transformers | 110M | 🧪 **UNDER TEST** | Meaning-based retrieval |
+| **Data Source** | Wikipedia API | N/A | ✅ **WORKING** | Article content |
+| **Visualization** | Plotly | N/A | ✅ **WORKING** | Interactive charts |
 
 ---
 
@@ -134,29 +136,16 @@ cp env.template .env
 # Edit .env and add your OpenAI API key
 ```
 
-### 4. Train TensorFlow Model
-```bash
-cd tensorflow_models
-python train_model.py
-cd ..
-```
-
-### 5. Start the Application
+### 4. Start the Application
 ```bash
 # Terminal 1 - Backend API
 cd backend && python api.py
 
 # Terminal 2 - Frontend (in new terminal)
-streamlit run app.py
+cd frontend && streamlit run app.py
 ```
 
-### 6. Quick Start Script
-```bash
-# Alternative: Use the quick start script
-python quick_start.py
-```
-
-### 7. Access the Application
+### 5. Access the Application
 Open your browser and navigate to `http://localhost:8501`
 
 ---
@@ -172,7 +161,7 @@ The application features a modern, intuitive interface with multiple specialized
 - Real-time processing indicators
 
 ### 🧠 **Intent Analysis Tab** 
-- Dual model comparison (TensorFlow LSTM vs GPU BERT)
+- Hugging Face TinyBERT model analysis
 - Interactive confidence gauges and charts
 - Detailed model performance metrics
 - Category-wise prediction analysis
@@ -203,17 +192,18 @@ graph TD
     A[User Input] --> B[Streamlit Frontend]
     B --> C[Flask API Backend]
     C --> D[Intent Classifier]
-    D --> E[TensorFlow LSTM ✅]
+    D --> E[Hugging Face TinyBERT ✅]
     D --> F[Keyword Fallback ✅]
     C --> G[Multi-Source Agent ✅]
     G --> H[QueryEnhancementAgent ✅]
     G --> I[ArticleSelectionAgent ✅]
     C --> J[OpenAI + LangChain ✅]
-    C --> K[Wikipedia Fetcher ✅]
+    C --> K[Wikipedia RAG ✅]
     K --> L[Wikipedia API ✅]
     J --> M[Cloud Summary ✅]
     H --> N[Enhanced Queries ✅]
     I --> O[Selected Articles ✅]
+    K --> J
     M --> B
     N --> K
     O --> J
@@ -221,10 +211,8 @@ graph TD
     %% Under Test Features
     C --> P[🧪 Local HF Models]
     C --> Q[🧪 Semantic Search]
-    C --> R[🧪 BERT Intent]
     P --> S[🧪 Local Summary]
     Q --> T[🧪 Vector Search]
-    R --> U[🧪 BERT Prediction]
 ```
 
 ---
@@ -239,16 +227,16 @@ graph TD
 - `GET /status` - Detailed system status ✅
 
 #### Intent Classification
-- `POST /intent` - TensorFlow LSTM intent classification ✅
-- `POST /intent_bert` - GPU BERT intent classification ✅
+- `POST /intent` - Hugging Face TinyBERT intent classification ✅
+- `POST /predict_intent` - TinyBERT model inference ✅
 
 #### Summarization
 - `POST /summarize` - Single source Wikipedia summarization ✅
 - `POST /summarize_multi_source` - Multi-source agent synthesis ✅
 
 #### Specialized APIs (Optional)
-- `POST /predict_intent` (tf_intent_api.py) - TensorFlow LSTM only ✅
-- `POST /predict` (bert_intent_api.py) - GPU BERT only ✅
+- `POST /predict_intent` - TinyBERT model inference (CPU) ✅
+- `POST /predict_intent_gpu` - TinyBERT model inference (GPU) ✅
 
 ### Usage Examples
 
@@ -318,21 +306,13 @@ print(f"Method: {result['method']}")
 
 ## 📈 Current Performance Metrics
 
-### TensorFlow LSTM Intent Classifier ✅
-- **Training Accuracy**: ~95%
-- **Validation Accuracy**: ~92%
-- **Model Size**: ~2.5MB
-- **Inference Time**: <100ms per query
+### Hugging Face TinyBERT Intent Classifier ✅
+- **Model Size**: 4MB
+- **Inference Time**: <50ms per query
 - **Categories**: 9 distinct intent classes (History, Science, Biography, Technology, Arts, Sports, Politics, Geography, General)
 - **Fallback**: Keyword-based system for reliability
-
-### GPU BERT Intent Classifier ✅
-- **Model**: DistilBERT with DirectML acceleration
-- **Training**: Custom Wikipedia dataset
-- **Model Size**: ~110MB
-- **Inference Time**: <200ms per query (GPU accelerated)
-- **Categories**: 9 distinct intent classes (same as TensorFlow)
-- **GPU Support**: DirectML compatible (RTX 4070, etc.)
+- **Framework**: PyTorch (via Hugging Face Transformers)
+- **Deployment**: CPU-optimized for production use
 
 ### Multi-Source Agent System ✅
 - **Articles per Query**: 1-3 (configurable)
@@ -482,12 +462,14 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 ## 🙏 Acknowledgments
 
-- **🤗 Hugging Face** for democratizing AI with open-source transformers
-- **OpenAI** for GPT models and the OpenAI API
-- **TensorFlow** team for the comprehensive ML framework
-- **Streamlit** for the amazing web app framework
-- **Wikipedia** for providing free access to human knowledge
-- **LangChain** for powerful NLP orchestration tools
+We extend our heartfelt thanks to:
+- **OpenAI** team for the powerful GPT models
+- **Hugging Face** team for the transformers ecosystem
+- **Streamlit** team for the amazing UI framework
+- **Wikipedia** for the extensive knowledge base
+- **LangChain** team for the agent framework
+- **PyTorch** team for the deep learning framework
+- **Plotly** team for the visualization tools
 
 ---
 
