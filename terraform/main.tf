@@ -1,5 +1,5 @@
 # SummarEaseAI - Azure Container Apps Deployment
-# Terraform configuration for microservices with scale-to-zero capability
+# Terraform configuration for frontend only - backend deployed to Hugging Face
 
 # Resource Group
 resource "azurerm_resource_group" "main" {
@@ -89,98 +89,20 @@ resource "azurerm_key_vault_secret" "openai_api_key" {
   key_vault_id = azurerm_key_vault.main.id
 }
 
+# Backend URL now points to Hugging Face
 resource "azurerm_key_vault_secret" "backend_url" {
   name         = "backend-url"
-  value        = "https://${azurerm_container_app.backend.latest_revision_fqdn}"
+  value        = "https://${var.huggingface_org}-${var.project_name}-backend.hf.space"
   key_vault_id = azurerm_key_vault.main.id
-  depends_on   = [azurerm_container_app.backend]
 }
 
-# Use existing Container App Environment instead of creating a new one
+# Use existing Container App Environment
 data "azurerm_container_app_environment" "main" {
   name                = var.existing_container_env_name
   resource_group_name = var.existing_container_env_rg
 }
 
-# Backend Container App
-resource "azurerm_container_app" "backend" {
-  name                         = "${var.project_name}-backend"
-  container_app_environment_id = data.azurerm_container_app_environment.main.id
-  resource_group_name          = azurerm_resource_group.main.name
-  revision_mode                = "Single"
-
-  template {
-    container {
-      name   = "backend"
-      image  = "${azurerm_container_registry.main.login_server}/summarease-backend:latest"
-      cpu    = 0.5
-      memory = "2Gi"
-
-      env {
-        name  = "FLASK_ENV"
-        value = "production"
-      }
-
-      env {
-        name  = "AZURE_DEPLOYMENT"
-        value = "true"
-      }
-
-      env {
-        name        = "OPENAI_API_KEY"
-        secret_name = "openai-api-key"
-      }
-
-      liveness_probe {
-        transport = "HTTP"
-        port      = 5000
-        path      = "/health"
-      }
-
-      readiness_probe {
-        transport = "HTTP"
-        port      = 5000
-        path      = "/health"
-      }
-    }
-
-    min_replicas = 0
-    max_replicas = 5
-  }
-
-  ingress {
-    external_enabled = true
-    target_port      = 5000
-    traffic_weight {
-      percentage      = 100
-      latest_revision = true
-    }
-  }
-
-  registry {
-    server               = azurerm_container_registry.main.login_server
-    username            = azurerm_container_registry.main.admin_username
-    password_secret_name = "registry-password"
-  }
-
-  secret {
-    name  = "registry-password"
-    value = azurerm_container_registry.main.admin_password
-  }
-
-  secret {
-    name  = "openai-api-key"
-    value = var.openai_api_key
-  }
-
-  tags = {
-    Environment = var.environment
-    Project     = "SummarEaseAI"
-    Service     = "Backend"
-  }
-}
-
-# Frontend Container App
+# Frontend Container App (Backend now on Hugging Face)
 resource "azurerm_container_app" "frontend" {
   name                         = "${var.project_name}-frontend"
   container_app_environment_id = data.azurerm_container_app_environment.main.id
@@ -253,7 +175,7 @@ resource "azurerm_container_app" "frontend" {
 
   secret {
     name  = "backend-url"
-    value = "https://${azurerm_container_app.backend.latest_revision_fqdn}"
+    value = "https://${var.huggingface_org}-${var.project_name}-backend.hf.space"
   }
 
   tags = {

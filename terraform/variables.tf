@@ -71,6 +71,12 @@ variable "huggingface_token" {
   sensitive   = true  # Marks this as sensitive to hide in logs
 }
 
+variable "huggingface_org" {
+  description = "Hugging Face organization or username"
+  type        = string
+  default     = "mdelehaye"
+}
+
 variable "existing_container_env_name" {
   description = "Name of the existing Container App Environment"
   type        = string
