@@ -2,8 +2,6 @@
 import streamlit as st
 import requests
 import json
-import plotly.graph_objects as go
-import pandas as pd
 from datetime import datetime
 import time
 
@@ -90,14 +88,11 @@ def get_api_status():
         pass
     return None
 
-def predict_intent(text, model_type='tensorflow'):
-    """Predict intent using specified model"""
+def predict_intent(text):
+    """Predict intent using BERT model"""
     try:
-        # Map frontend model types to api_simple endpoints
-        endpoint = '/intent' if model_type == 'tensorflow' else '/intent_bert'
-        
         response = requests.post(
-            f"{API_BASE_URL}{endpoint}",
+            f"{API_BASE_URL}/intent_bert",
             json={'text': text},
             timeout=10
         )
@@ -170,8 +165,7 @@ def main():
             api_status = get_api_status()
             if api_status and 'features' in api_status:
                 features = api_status['features']
-                st.info(f"🧠 TensorFlow LSTM: {'✅' if features.get('tensorflow_model') else '❌'}")
-                st.info(f"🚀 GPU BERT: {'✅' if features.get('bert_model') else '❌'}")
+                st.info(f"🚀 BERT Model: {'✅' if features.get('bert_model') else '❌'}")
                 st.info(f"📡 OpenAI: {'✅' if features.get('openai_summarization') else '❌'}")
                 st.info(f"🌍 Wikipedia: {'✅' if features.get('wikipedia_fetching') else '❌'}")
         else:
@@ -198,21 +192,13 @@ def main():
             help="Single source uses one Wikipedia article. Multi-source synthesizes multiple sources."
         )
         
-        st.markdown("**Intent Classification:**")
-        intent_model = st.radio(
-            "Choose intent model:",
-            ["TensorFlow LSTM", "GPU BERT"],
-            help="Compare custom Wikipedia-trained TensorFlow model vs GPU-accelerated BERT."
-        )
-        
         st.divider()
         
         # About
         st.subheader("📖 About")
         st.markdown("""
         **Features:**
-        - 🧠 **Wikipedia-trained TensorFlow LSTM**
-        - 🚀 **DirectML GPU Acceleration**
+        - 🚀 **BERT Intent Classification**
         - 🌍 **Wikipedia Portal Integration**
         - 📊 **Intent Classification**
         - 🤖 **OpenAI Summarization**
@@ -220,7 +206,7 @@ def main():
         **Tech Stack:**
         - **Frontend**: Streamlit
         - **Backend**: Flask + CORS
-        - **AI/ML**: TensorFlow + DirectML
+        - **AI/ML**: BERT
         - **NLP**: LangChain + OpenAI
         - **Data**: Wikipedia API
         """)
@@ -232,10 +218,9 @@ def main():
         return
     
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         "🔍 Summarize", 
-        "🧠 Intent Analysis", 
-        "⚖️ Model Comparison",
+        "🧠 Intent Analysis",
         "📊 Analytics"
     ])
     
@@ -295,11 +280,13 @@ def main():
                     st.markdown(f"**Topic:** {result.get('topic', result.get('query', 'Unknown'))}")
                     
                     # Show model used
-                    method = result.get('summarization_method', 'Unknown')
-                    if 'Hugging Face' in method:
-                        st.markdown(f"**Model:** <span class='hf-badge'>{method}</span>", unsafe_allow_html=True)
+                    method = result.get('method', 'Unknown')
+                    model = result.get('model', '')
+                    model_display = f"{method} ({model})" if model else method
+                    if 'Hugging Face' in model_display:
+                        st.markdown(f"**Model:** <span class='hf-badge'>{model_display}</span>", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"**Model:** {method}")
+                        st.markdown(f"**Model:** {model_display}")
                     
                     if result.get('predicted_intent'):
                         confidence = result.get('intent_confidence', 0)
@@ -316,47 +303,53 @@ def main():
                         # Metrics
                         col_a, col_b = st.columns(2)
                         with col_a:
-                            st.metric("Summary Lines", result.get('max_lines', 'N/A'))
-                            st.metric("Article Length", f"{result.get('article_length', 0):,} chars")
+                            st.metric("Summary Lines", len(result.get('summary', '').splitlines()))
+                            if 'article' in result:
+                                st.metric("Article Length", f"{result['article'].get('length', 0):,} chars")
                         with col_b:
                             st.metric("Summary Length", f"{result.get('summary_length', 0):,} chars")
-                            article_len = int(result.get('article_length', 0))
-                            summary_len = int(result.get('summary_length', 0))
-                            if article_len > 0:
-                                compression = (1 - summary_len / article_len) * 100
-                                st.metric("Compression", f"{compression:.1f}%")
+                            if 'article' in result:
+                                article_len = int(result['article'].get('length', 0))
+                                summary_len = int(result.get('summary_length', 0))
+                                if article_len > 0:
+                                    compression = (1 - summary_len / article_len) * 100
+                                    st.metric("Compression", f"{compression:.1f}%")
+                            
+                        # Additional stats for multi-source
+                        if 'summaries' in result:
+                            st.markdown("---")
+                            st.markdown("**Multi-Source Stats:**")
+                            col_c, col_d = st.columns(2)
+                            with col_c:
+                                st.metric("Articles Found", len(result.get('summaries', [])))
+                                st.metric("OpenAI Calls", result.get('openai_calls', 1))
+                            with col_d:
+                                st.metric("Wikipedia Calls", result.get('wikipedia_calls', 1))
+                                st.metric("Articles Used", len(result.get('summaries', [])))
+                            
+                            if result.get('summaries'):
+                                st.markdown("**Articles Used:**")
+                                for article in result['summaries']:
+                                    st.markdown(f"- [{article['title']}]({article['url']})")
             else:
                 st.error(f"❌ {result.get('error', 'Unknown error occurred')}")
     
     with tab2:
         st.header("Intent Classification Analysis")
-        st.markdown("Compare Wikipedia-trained TensorFlow LSTM vs 🤗 BERT models for intent classification.")
-        
-        # Model selection
-        col1, col2 = st.columns([3, 1])
-        with col2:
-            selected_intent_model = st.selectbox(
-                "Model:",
-                ["TensorFlow LSTM", "GPU BERT"],
-                help="Choose intent classification model"
-            )
+        st.markdown("Use BERT model for intent classification.")
         
         # Intent prediction form
         with st.form("intent_form"):
-            with col1:
-                intent_text = st.text_area(
-                    "Enter text to classify:",
-                    placeholder="e.g., 'Tell me about the Apollo moon landing'",
-                    height=100
-                )
+            intent_text = st.text_area(
+                "Enter text to classify:",
+                placeholder="e.g., 'Tell me about the Apollo moon landing'",
+                height=100
+            )
             predict_button = st.form_submit_button("🧠 Predict Intent")
         
         if predict_button and intent_text:
-            # Single model prediction
-            model_type = 'tensorflow' if 'TensorFlow' in selected_intent_model else 'bert'
-            
             with st.spinner("Analyzing intent..."):
-                intent_result = predict_intent(intent_text, model_type)
+                intent_result = predict_intent(intent_text)
             
             if intent_result:
                 col1, col2 = st.columns([1, 1])
@@ -366,87 +359,51 @@ def main():
                     st.markdown(f"**Text:** {intent_result['text']}")
                     st.markdown(f"**Model:** {intent_result['model_type']}")
                     st.markdown(f"**Predicted Intent:** {intent_result['intent']}")
-                    st.markdown(f"**Confidence:** {intent_result['confidence']:.1%}")
-                
-                with col2:
-                    # Confidence gauge
-                    fig = go.Figure(go.Indicator(
-                        mode="gauge+number+delta",
-                        value=intent_result['confidence'] * 100,
-                        title={'text': "Confidence Score"},
-                        delta={'reference': 80},
-                        gauge={'axis': {'range': [None, 100]},
-                               'bar': {'color': "darkblue"}},
-                        domain={'x': [0, 1], 'y': [0, 1]}
-                    ))
-                    fig.update_layout(height=300)
-                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Add confidence score speedometer
+                    confidence = float(intent_result['confidence']) * 100
+                    col_a, col_b = st.columns([1, 1])
+                    with col_a:
+                        st.markdown(f"**Confidence:** {confidence:.1f}%")
+                    with col_b:
+                        # Create plotly gauge
+                        import plotly.graph_objects as go
+                        
+                        fig = go.Figure(go.Indicator(
+                            mode = "gauge+number",
+                            value = confidence,
+                            domain = {'x': [0, 1], 'y': [0, 1]},
+                            title = {'text': "Confidence Score"},
+                            gauge = {
+                                'axis': {'range': [0, 100]},
+                                'bar': {'color': "#1f77b4"},
+                                'bgcolor': "white",
+                                'borderwidth': 2,
+                                'bordercolor': "gray",
+                                'steps': [
+                                    {'range': [0, 30], 'color': '#ffcdd2'},
+                                    {'range': [30, 70], 'color': '#fff9c4'},
+                                    {'range': [70, 100], 'color': '#c8e6c9'}
+                                ],
+                                'threshold': {
+                                    'line': {'color': "red", 'width': 4},
+                                    'thickness': 0.75,
+                                    'value': confidence
+                                }
+                            }
+                        ))
+                        
+                        fig.update_layout(
+                            height=200,
+                            margin=dict(l=10, r=10, t=40, b=10),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font={'color': "#666666"}
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
     
     with tab3:
-        st.header("⚖️ AI Model Comparison")
-        st.markdown("Compare different AI models side-by-side to understand their strengths and differences.")
-        
-        # Quick comparison section
-        st.subheader("🧪 Quick Model Test")
-        
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            test_text = st.text_input(
-                "Test text for model comparison:",
-                value="Tell me about artificial intelligence and machine learning",
-                help="Enter text to compare how different models classify intent"
-            )
-        
-        with col2:
-            if st.button("🧠 Test TensorFlow LSTM", use_container_width=True):
-                if test_text:
-                    with st.spinner("Testing TensorFlow LSTM..."):
-                        tf_result = predict_intent(test_text, 'tensorflow')
-                    
-                    if tf_result:
-                        st.subheader("🧠 TensorFlow LSTM Result")
-                        st.markdown(f"**Intent:** {tf_result['intent']}")
-                        st.markdown(f"**Confidence:** {tf_result['confidence']:.1%}")
-            
-            if st.button("🚀 Test GPU BERT", use_container_width=True):
-                if test_text:
-                    with st.spinner("Testing GPU BERT..."):
-                        bert_result = predict_intent(test_text, 'bert')
-                    
-                    if bert_result:
-                        st.subheader("🚀 GPU BERT Result")
-                        st.markdown(f"**Intent:** {bert_result['intent']}")
-                        st.markdown(f"**Confidence:** {bert_result['confidence']:.1%}")
-        
-        # Model information
-        st.subheader("🔧 Model Information")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### 🧠 TensorFlow LSTM")
-            st.markdown("""
-            - **Architecture**: Bidirectional LSTM with embeddings
-            - **Training**: Custom dataset, 20 epochs
-            - **Vocabulary**: 10,000 words
-            - **Sequence Length**: 100 tokens
-            - **Categories**: 9 intent classes
-            - **Model Size**: ~2.5MB
-            """)
-        
-        with col2:
-            st.markdown("### 🚀 GPU BERT")
-            st.markdown("""
-            - **Architecture**: DistilBERT with GPU acceleration
-            - **Training**: Custom Wikipedia dataset
-            - **Vocabulary**: 30,522 subword tokens
-            - **Sequence Length**: 512 tokens
-            - **Categories**: 9 intent classes
-            - **Model Size**: ~110MB
-            - **GPU**: DirectML accelerated
-            """)
-    
-    with tab4:
         st.header("📊 System Analytics")
         
         # System information
@@ -457,38 +414,22 @@ def main():
             features = api_status.get('features', {})
             
             feature_data = [
-                {'Feature': 'TensorFlow Intent Model', 'Status': '✅ Available' if features.get('tensorflow_intent_model') else '❌ Unavailable'},
-                {'Feature': 'BERT Intent Model', 'Status': '✅ Available' if features.get('bert_intent_model') else '❌ Unavailable'},
+                {'Feature': 'BERT Intent Model', 'Status': '✅ Available' if features.get('bert_model') else '❌ Unavailable'},
                 {'Feature': 'OpenAI Summarization', 'Status': '✅ Available' if features.get('openai_summarization') else '❌ Unavailable'},
-                {'Feature': 'HuggingFace Summarization', 'Status': '✅ Available' if features.get('huggingface_summarization') else '❌ Unavailable'},
-                {'Feature': 'Semantic Search', 'Status': '✅ Available' if features.get('semantic_search') else '❌ Unavailable'},
-                {'Feature': 'Sentence Embeddings', 'Status': '✅ Available' if features.get('sentence_embeddings') else '❌ Unavailable'}
+                {'Feature': 'Wikipedia Integration', 'Status': '✅ Available' if features.get('wikipedia_fetching') else '❌ Unavailable'}
             ]
             
-            feature_df = pd.DataFrame(feature_data)
-            st.dataframe(feature_df, use_container_width=True)
+            for feature in feature_data:
+                st.info(f"{feature['Feature']}: {feature['Status']}")
             
             # API info
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             
             with col1:
                 st.metric("API Version", api_status.get('version', 'Unknown'))
             with col2:
-                st.metric("Total Endpoints", len(api_status.get('endpoints', {})))
-            with col3:
                 available_features = sum(1 for f in features.values() if f)
                 st.metric("Active Features", f"{available_features}/{len(features)}")
-            
-            # Technology comparison
-            st.subheader("🛠️ Technology Stack Comparison")
-            
-            tech_comparison = pd.DataFrame({
-                'Component': ['Intent Classification', 'Text Summarization', 'Semantic Search', 'Model Serving'],
-                'Traditional': ['Rule-based/Keywords', 'Extractive methods', 'Keyword matching', 'Single model'],
-                'SummarEaseAI v2.0': ['TensorFlow LSTM + BERT', 'OpenAI + Hugging Face', 'Sentence embeddings', 'Multiple AI models']
-            })
-            
-            st.dataframe(tech_comparison, use_container_width=True)
         
         # Sample queries for testing
         st.subheader("🧪 Sample Test Queries")
@@ -498,9 +439,7 @@ def main():
             "Tell me about Albert Einstein's discoveries",
             "How does renewable energy work?",
             "Olympic Games history and significance",
-            "Democracy and political systems",
-            "Mountain formation geological processes",
-            "Renaissance art and cultural movement"
+            "Democracy and political systems"
         ]
         
         st.markdown("Try these sample queries to test different AI capabilities:")
