@@ -11,7 +11,6 @@ services:
       - "5000:5000"
     environment:
       - FLASK_ENV=development
-      - TF_CPP_MIN_LOG_LEVEL=3
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./backend:/app/backend
@@ -29,8 +28,8 @@ services:
   # Frontend Streamlit Service  
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: summarease-frontend
     ports:
       - "8501:8501"
@@ -39,6 +38,7 @@ services:
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - STREAMLIT_SERVER_HEADLESS=true
       - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
     depends_on:
       backend:
         condition: service_healthy
@@ -55,7 +55,6 @@ networks:
   summarease-network:
     driver: bridge
 
-# Optional: Add volume for model persistence
 volumes:
   model-data:
     driver: local 

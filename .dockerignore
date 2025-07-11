@@ -1,52 +1,51 @@
-# Git
+# Version control
 .git
 .gitignore
 
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/.env
+**/.venv
+**/env/
+**/venv/
+**/ENV/
+**/env.bak/
+**/venv.bak/
 
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE
-.vscode/
-.idea/
+# Development/IDE
+.idea
+.vscode
 *.swp
 *.swo
-*~
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-*.log
-*.tmp
-.pytest_cache/
-.coverage
-htmlcov/
+# Testing
+**/tests/
+pytest.ini
+**/.pytest_cache/
 
 # Documentation
-*.md
+**/*.md
 docs/
-frontend/static/screenshots/
+screenshots/
 
-# Development files
-tests/
-.env.template
-env.template 
+# Build
+**/*.log
+**/*.sqlite
+**/*.db
+
+# Project specific
+frontend/
+terraform/
+ml_models/*
+!ml_models/bert_classifier.py
+!ml_models/intent_classifier.py
+!ml_models/bert_gpu_model/
+utils/*
+!utils/langchain_agents.py
+!utils/multi_source_agent.py
+!utils/openai_query_generator.py
+!utils/wikipedia_fetcher.py 

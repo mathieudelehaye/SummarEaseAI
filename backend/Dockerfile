@@ -1,4 +1,4 @@
-# SummarEaseAI Backend - Flask API with TensorFlow CPU
+# SummarEaseAI Backend - Flask API with PyTorch & Hugging Face
 FROM python:3.11-slim
 
 # Set working directory
@@ -12,22 +12,28 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
-COPY backend/requirements.txt backend_requirements.txt
+COPY backend/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir -r backend_requirements.txt
 
-# Copy the entire project (needed for imports)
-COPY . .
+# Copy only necessary files and models
+COPY backend/api.py backend/
+COPY backend/hf_summarizer.py backend/
+COPY backend/summarizer.py backend/
+COPY utils/langchain_agents.py utils/
+COPY utils/multi_source_agent.py utils/
+COPY utils/openai_query_generator.py utils/
+COPY utils/wikipedia_fetcher.py utils/
+COPY ml_models/bert_classifier.py ml_models/
+COPY ml_models/intent_classifier.py ml_models/
+COPY ml_models/bert_gpu_model/ ml_models/bert_gpu_model/
 
 # Set Python path
 ENV PYTHONPATH=/app
 
 # Create directory for models
-RUN mkdir -p /app/ml_models/bert_gpu_models
-RUN mkdir -p /app/saved_model
+RUN mkdir -p /app/ml_models/saved_models
 
 # Expose port
 EXPOSE 5000
@@ -39,7 +45,6 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Set environment variables
 ENV FLASK_APP=backend/api.py
 ENV FLASK_ENV=production
-ENV TF_CPP_MIN_LOG_LEVEL=3
 
 # Run the Flask application
 CMD ["python", "backend/api.py"] 

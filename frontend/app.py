@@ -4,6 +4,7 @@ import requests
 import json
 from datetime import datetime
 import time
+import os
 
 # Page configuration
 st.set_page_config(
@@ -68,7 +69,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Configuration
-API_BASE_URL = "http://localhost:5000"
+API_BASE_URL = os.getenv('BACKEND_URL', 'http://backend:5000')  # Use environment variable with fallback for local Docker
 
 def check_api_health():
     """Check if the Flask API is running"""
