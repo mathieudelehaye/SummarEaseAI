@@ -56,7 +56,7 @@
 ### 🧠 **Intent Recognition**
 - **Hugging Face TinyBERT**: ✅ **WORKING** - Transformer-based model for intent classification (4M parameters)
 - **Keyword-based Fallback**: ✅ **WORKING** - Reliable backup intent classification system
-- **9 Intent Categories**: ✅ **WORKING** - History, Science, Biography, Technology, Arts (includes Music), Sports, Politics, Geography, General
+- **6 Intent Categories**: ✅ **WORKING** - Finance, Science, Technology, History, Music, Sports 
 - **Real-time Confidence Scoring**: ✅ **WORKING** - Interactive gauges showing prediction confidence using Plotly
 
 ### 🤖 **Multi-Source Intelligence**
@@ -103,7 +103,7 @@
 
 ### 🚀 **GPU BERT Intent Classification** - WORKING ✅
 - **GPU BERT Model**: ✅ **WORKING** - DistilBERT with DirectML GPU acceleration for intent detection
-- **Custom Training**: ✅ **WORKING** - Trained on Wikipedia dataset with 9 intent categories
+- **Custom Training**: ✅ **WORKING** - Trained on Wikipedia dataset with 6 intent categories
 - **High Performance**: ✅ **WORKING** - GPU-accelerated inference with confidence scoring
 
 ---
