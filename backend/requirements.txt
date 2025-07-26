@@ -5,8 +5,8 @@ requests==2.31.0
 python-dotenv==1.0.0
 
 # Data processing
-pandas==2.3.1
-numpy==1.24.3
+pandas==2.0.3
+numpy>=1.24.3,<2.0
 python-dateutil==2.9.0.post0
 pytz==2025.2
 tzdata==2025.2
@@ -26,3 +26,7 @@ wikipedia-api==0.6.0  # For advanced Wikipedia operations
 # OpenAI integration
 openai==0.28.0  # Last version before major API changes
 langchain==0.0.284  # For agentic workflows 
+
+pylint
+pylint-django
+black
