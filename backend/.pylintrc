@@ -12,6 +12,7 @@ disable=
     R0801,  # Similar lines in the same file
     R0903,  # Too few public methods (common for lightweight service/model classes)
     W0511,  # TODO/FIXME in comments
+    C0412,  # Ungrouped imports (langchain_openai is separate from langchain)
     astroid-error,  # Disable astroid errors (like recursion issues with complex libraries)
 
 [TYPECHECK]

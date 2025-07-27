@@ -6,7 +6,7 @@ Centralized service for all summarization operations - Simplified MVC version
 
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 import wikipedia
 from dotenv import load_dotenv

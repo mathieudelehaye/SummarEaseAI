@@ -1,3 +1,4 @@
+# pylint: disable=ungrouped-imports
 """
 Summarization module using LangChain and OpenAI for intelligent Wikipedia article summarization.
 """
@@ -8,29 +9,29 @@ import logging
 from dotenv import load_dotenv
 
 # First-party imports
-from models.openai_summarizer_model import (
-    get_openai_api_key,
-    create_summarization_chain,
-    create_line_limited_chain,
-    create_intent_aware_chain,
-    estimate_tokens,
+from ..models.openai_summarizer_model import (
     chunk_text_for_openai,
+    create_intent_aware_chain,
+    create_line_limited_chain,
+    create_summarization_chain,
+    estimate_tokens,
+    get_openai_api_key,
     sanitize_article_text,
 )
 
-# Updated LangChain imports for newer versions
+# LangChain imports
 try:
-    from langchain_openai import ChatOpenAI
-    from langchain.prompts import PromptTemplate
     from langchain.chains import LLMChain
+    from langchain.prompts import PromptTemplate
+    from langchain_openai import ChatOpenAI
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     try:
         # Fallback for older LangChain versions
+        from langchain.chains import LLMChain
         from langchain.chat_models import ChatOpenAI
         from langchain.prompts import PromptTemplate
-        from langchain.chains import LLMChain
 
         LANGCHAIN_AVAILABLE = True
     except ImportError:

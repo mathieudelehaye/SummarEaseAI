@@ -4,7 +4,7 @@ Handles summarization requests and coordinates with services
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 from backend.services.summarization_service import get_summarization_service
 

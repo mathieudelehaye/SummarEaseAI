@@ -3,8 +3,7 @@ Unit tests for MultiSourceAgent
 Tests the core multi-source intelligence functionality
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 # Import the class under test
 from utils.multi_source_agent import MultiSourceAgent, RateLimitConfig

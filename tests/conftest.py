@@ -1,17 +1,20 @@
 """
 Pytest configuration and shared fixtures for SummarEaseAI tests
 """
-import pytest
+
 import os
+import shutil
 import sys
 import tempfile
-import shutil
-from unittest.mock import Mock, MagicMock
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
 
 @pytest.fixture
 def temp_dir():
@@ -19,6 +22,7 @@ def temp_dir():
     temp_dir = tempfile.mkdtemp()
     yield temp_dir
     shutil.rmtree(temp_dir)
+
 
 @pytest.fixture
 def mock_openai_client():
@@ -30,6 +34,7 @@ def mock_openai_client():
     mock_client.chat.completions.create.return_value = mock_response
     return mock_client
 
+
 @pytest.fixture
 def mock_bert_classifier():
     """Mock BERT classifier for testing"""
@@ -38,11 +43,12 @@ def mock_bert_classifier():
     mock_classifier.predict.return_value = ("Technology", 0.85)
     mock_classifier.is_loaded.return_value = True
     mock_classifier.get_performance_stats.return_value = {
-        'total_predictions': 100,
-        'avg_inference_time': 0.15,
-        'confidence_distribution': {'high': 70, 'medium': 25, 'low': 5}
+        "total_predictions": 100,
+        "avg_inference_time": 0.15,
+        "confidence_distribution": {"high": 70, "medium": 25, "low": 5},
     }
     return mock_classifier
+
 
 @pytest.fixture
 def mock_intent_classifier():
@@ -52,21 +58,30 @@ def mock_intent_classifier():
     mock_classifier.predict_intent.return_value = ("Science", 0.92)
     mock_classifier.predict_intent_fallback.return_value = ("General", 0.6)
     mock_classifier.intent_categories = [
-        'History', 'Science', 'Biography', 'Technology', 
-        'Arts', 'Sports', 'Politics', 'Geography', 'General'
+        "History",
+        "Science",
+        "Biography",
+        "Technology",
+        "Arts",
+        "Sports",
+        "Politics",
+        "Geography",
+        "General",
     ]
     return mock_classifier
+
 
 @pytest.fixture
 def sample_wikipedia_article():
     """Sample Wikipedia article data for testing"""
     return {
-        'title': 'Artificial Intelligence',
-        'content': 'Artificial intelligence (AI) is intelligence demonstrated by machines, in contrast to the natural intelligence displayed by humans and animals. Leading AI textbooks define the field as the study of "intelligent agents".',
-        'url': 'https://en.wikipedia.org/wiki/Artificial_intelligence',
-        'summary': 'A brief summary about AI.',
-        'length': 150
+        "title": "Artificial Intelligence",
+        "content": 'Artificial intelligence (AI) is intelligence demonstrated by machines, in contrast to the natural intelligence displayed by humans and animals. Leading AI textbooks define the field as the study of "intelligent agents".',
+        "url": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+        "summary": "A brief summary about AI.",
+        "length": 150,
     }
+
 
 @pytest.fixture
 def sample_intent_data():
@@ -80,16 +95,17 @@ def sample_intent_data():
         ("Renaissance art movement", "Arts"),
         ("Democracy principles", "Politics"),
         ("Where is Mount Everest?", "Geography"),
-        ("General information", "General")
+        ("General information", "General"),
     ]
+
 
 @pytest.fixture(autouse=True)
 def setup_test_environment():
     """Setup test environment variables"""
-    os.environ['TESTING'] = 'true'
+    os.environ["TESTING"] = "true"
     # Mock API keys for testing
-    os.environ['OPENAI_API_KEY'] = 'test-key-12345'
+    os.environ["OPENAI_API_KEY"] = "test-key-12345"
     yield
     # Cleanup
-    if 'TESTING' in os.environ:
-        del os.environ['TESTING'] 
+    if "TESTING" in os.environ:
+        del os.environ["TESTING"]

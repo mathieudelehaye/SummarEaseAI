@@ -4,13 +4,14 @@ Moved from utils/langchain_agents.py to proper services layer
 Specialized LangChain agent orchestration
 """
 
-from typing import List, Dict, Any
 import logging
 import sys
 from pathlib import Path
+from typing import Any, Dict, List
 
 import wikipedia
-from models.llm_client import get_llm_client
+
+from .llm_client import get_llm_client
 
 # Setup agent service environment
 repo_root = Path(__file__).resolve().parent.parent.parent
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize LangChain agent components
 try:
-    from langchain.agents import AgentType, initialize_agent, Tool
+    from langchain.agents import AgentType, Tool, initialize_agent
     from langchain.memory import ConversationBufferMemory
 
     LANGCHAIN_AVAILABLE = True

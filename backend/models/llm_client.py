@@ -3,11 +3,12 @@ Raw LLM API utilities - NO business logic
 Used by services for actual API interactions
 """
 
-import os
 import logging
+import os
+
 import openai
-from transformers import pipeline
 from dotenv import load_dotenv
+from transformers import pipeline
 
 # Load environment variables
 load_dotenv()

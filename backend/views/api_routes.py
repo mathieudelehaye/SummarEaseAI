@@ -5,15 +5,16 @@ Pure HTTP concerns - routing, request/response handling
 No business logic - delegates to services
 """
 
+import logging
 import os
 import sys
-import logging
 import warnings
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from flask_cors import CORS
+
 from backend.services.summarization_service import get_summarization_service
 
 

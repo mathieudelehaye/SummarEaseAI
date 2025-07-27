@@ -7,7 +7,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
 
 from backend.models.llm_client import get_llm_client
 

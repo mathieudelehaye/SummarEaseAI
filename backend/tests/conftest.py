@@ -2,13 +2,14 @@
 Pytest configuration and shared fixtures for SummarEaseAI tests
 """
 
-import pytest
 import os
+import shutil
 import sys
 import tempfile
-import shutil
-from unittest.mock import Mock, MagicMock
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent

@@ -4,24 +4,27 @@ Pure data access layer for OpenAI API interactions
 Handles all LangChain and OpenAI API communication without business logic
 """
 
-import os
 import logging
-from typing import Optional, List
+import os
+from typing import List, Optional
 
-# Updated LangChain imports for newer versions
+# Third-party imports
+from dotenv import load_dotenv
+
+# LangChain imports
 try:
-    from langchain_openai import ChatOpenAI
-    from langchain.prompts import PromptTemplate
     from langchain.chains import LLMChain
+    from langchain.prompts import PromptTemplate
     from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain_openai import ChatOpenAI
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     try:
         # Fallback for older LangChain versions
+        from langchain.chains import LLMChain
         from langchain.chat_models import ChatOpenAI
         from langchain.prompts import PromptTemplate
-        from langchain.chains import LLMChain
         from langchain.text_splitter import RecursiveCharacterTextSplitter
 
         LANGCHAIN_AVAILABLE = True
@@ -30,8 +33,6 @@ except ImportError:
         logging.warning(
             "LangChain not available. OpenAI summarization will be disabled."
         )
-
-from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()

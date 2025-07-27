@@ -7,13 +7,14 @@ Main orchestration service with rate limiting and cost control
 import logging
 import sys
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 import wikipedia
 from ml_models.bert_classifier import get_classifier as get_bert_classifier
+
+from backend.models.langchain_model import get_langchain_agents_service
 from backend.models.llm_client import get_llm_client
 from backend.models.query_expansion_model import get_query_generation_service
-from backend.models.langchain_model import get_langchain_agents_service
 from backend.models.wikipedia_model import WikipediaService
 from backend.services.summarization_workflow_service import (
     summarize_article_with_intent,

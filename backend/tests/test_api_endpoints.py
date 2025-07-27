@@ -3,9 +3,10 @@ Unit tests for Flask API endpoints
 Tests the critical backend API functionality
 """
 
-import pytest
 import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Import Flask app
 from backend.api import app

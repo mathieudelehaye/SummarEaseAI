@@ -2,10 +2,25 @@
 Test cases for Wikipedia service
 """
 
-import pytest
+# Import the functions from the correct path
+import sys
+from pathlib import Path
 from unittest.mock import Mock, patch
-from backend.services.wikipedia_service import WikipediaService
+
 import wikipedia
+from utils.wikipedia_fetcher import (
+    enhance_query_with_intent,
+    fetch_article,
+    preprocess_historical_query,
+    sanitize_wikipedia_content,
+    search_and_fetch_article,
+    search_and_fetch_article_info,
+)
+
+# Add the project root to the path
+repo_root = Path(__file__).resolve().parent.parent.parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
 
 class TestWikipediaFetcher:
