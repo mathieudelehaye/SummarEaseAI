@@ -13,9 +13,9 @@ import wikipedia
 from ml_models.bert_classifier import get_classifier as get_bert_classifier
 from backend.models.llm_client import get_llm_client
 from backend.services.query_generation_service import get_query_generation_service
-from backend.services.langchain_agents_service import get_langchain_agents_service
+from backend.models.langchain_model import get_langchain_agents_service
 from backend.services.wikipedia_service import WikipediaService
-from backend.services.summarizer import summarize_article_with_intent
+from backend.services.summarization_workflow_service import summarize_article_with_intent
 
 # Common exceptions for service error handling
 COMMON_SERVICE_EXCEPTIONS = (
