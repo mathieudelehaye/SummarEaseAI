@@ -10,6 +10,19 @@ import openai
 from dotenv import load_dotenv
 from transformers import pipeline
 
+# LangChain imports
+try:
+    from langchain_openai import ChatOpenAI
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    try:
+        from langchain.chat_models import ChatOpenAI
+        LANGCHAIN_AVAILABLE = True
+    except ImportError:
+        LANGCHAIN_AVAILABLE = False
+        ChatOpenAI = None
+        logging.warning("LangChain not available. Some LLM functionality will be limited.")
+
 # Load environment variables
 load_dotenv()
 
@@ -19,47 +32,70 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     """Raw LLM API utilities with no business logic"""
 
-    def __init__(self):
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+    def __init__(self, model: str = "gpt-3.5-turbo", temperature: float = 0.7, max_tokens: int = 1500):
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        if self.api_key:
+            openai.api_key = self.api_key
 
-    @staticmethod
     def call_openai_chat(
+        self,
         prompt: str,
-        model: str = "gpt-3.5-turbo",
-        temperature: float = 0.7,
-        max_tokens: int = 1500,
+        model: str = None,
+        temperature: float = None,
+        max_tokens: int = None,
     ) -> str:
         """
         Raw OpenAI API call - no business logic
 
         Args:
             prompt: The prompt to send to OpenAI
-            model: Model name to use
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens in response
+            model: Model name to use (uses instance default if None)
+            temperature: Sampling temperature (uses instance default if None)
+            max_tokens: Maximum tokens in response (uses instance default if None)
 
         Returns:
             Generated text response
         """
+        if not self.api_key:
+            return "Error: OpenAI API key not configured"
+        
+        if not prompt.strip():
+            return "Error: Empty prompt provided"
+            
         try:
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content.strip()
+            if LANGCHAIN_AVAILABLE and ChatOpenAI:
+                # Use LangChain ChatOpenAI
+                llm = ChatOpenAI(
+                    openai_api_key=self.api_key,
+                    model_name=model or self.model,
+                    temperature=temperature or self.temperature,
+                    max_tokens=max_tokens or self.max_tokens,
+                )
+                response = llm.invoke(prompt)
+                return response.content.strip()
+            else:
+                # Fallback to raw OpenAI API
+                response = openai.ChatCompletion.create(
+                    model=model or self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temperature or self.temperature,
+                    max_tokens=max_tokens or self.max_tokens,
+                )
+                return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error("OpenAI API call failed: %s", str(e))
-            raise
+            return f"Error calling OpenAI: {str(e)}"
 
-    @staticmethod
     def call_openai_with_system_message(
+        self,
         user_prompt: str,
         system_message: str,
-        model: str = "gpt-3.5-turbo",
-        temperature: float = 0.7,
-        max_tokens: int = 1500,
+        model: str = None,
+        temperature: float = None,
+        max_tokens: int = None,
     ) -> str:
         """
         Raw OpenAI API call with system message
@@ -67,30 +103,47 @@ class LLMClient:
         Args:
             user_prompt: User message content
             system_message: System message for context
-            model: Model name to use
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens in response
+            model: Model name to use (uses instance default if None)
+            temperature: Sampling temperature (uses instance default if None)
+            max_tokens: Maximum tokens in response (uses instance default if None)
 
         Returns:
             Generated text response
         """
+        if not self.api_key:
+            return "Error: OpenAI API key not configured"
+            
         try:
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content.strip()
+            if LANGCHAIN_AVAILABLE and ChatOpenAI:
+                # Use LangChain ChatOpenAI with system message
+                llm = ChatOpenAI(
+                    openai_api_key=self.api_key,
+                    model_name=model or self.model,
+                    temperature=temperature or self.temperature,
+                    max_tokens=max_tokens or self.max_tokens,
+                )
+                # For LangChain, we need to format the message properly
+                formatted_prompt = f"System: {system_message}\n\nUser: {user_prompt}"
+                response = llm.invoke(formatted_prompt)
+                return response.content.strip()
+            else:
+                # Fallback to raw OpenAI API
+                response = openai.ChatCompletion.create(
+                    model=model or self.model,
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=temperature or self.temperature,
+                    max_tokens=max_tokens or self.max_tokens,
+                )
+                return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error("OpenAI API call with system message failed: %s", str(e))
-            raise
+            return f"Error: {str(e)}"
 
-    @staticmethod
     def call_huggingface_summarizer(
+        self,
         text: str,
         model_name: str = "facebook/bart-large-cnn",
         max_length: int = 250,
@@ -116,13 +169,21 @@ class LLMClient:
             return result[0]["summary_text"]
         except Exception as e:
             logger.error("HuggingFace summarization failed: %s", str(e))
-            raise
+            return f"Error: {str(e)}"
 
-    @staticmethod
-    def check_openai_availability() -> bool:
+    def check_openai_availability(self) -> bool:
         """Check if OpenAI API is available and configured"""
-        api_key = os.getenv("OPENAI_API_KEY")
-        return api_key is not None and len(api_key.strip()) > 0
+        return self.api_key is not None and len(self.api_key.strip()) > 0
+
+    def get_model_info(self) -> dict:
+        """Get model information and configuration"""
+        return {
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "openai_available": self.check_openai_availability(),
+            "langchain_available": LANGCHAIN_AVAILABLE,
+        }
 
 
 class _LLMClientSingleton:
@@ -134,7 +195,12 @@ class _LLMClientSingleton:
     def get_instance(cls) -> LLMClient:
         """Get or create the singleton client instance"""
         if cls._instance is None:
-            cls._instance = LLMClient()
+            # Check if API key is available
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key and len(api_key.strip()) > 0:
+                cls._instance = LLMClient()
+            else:
+                cls._instance = None
         return cls._instance
 
 

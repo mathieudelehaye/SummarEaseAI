@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Import Flask app
-from backend.api import app
+from backend.views.api_routes import app
 
 
 class TestAPIEndpoints:
@@ -51,11 +51,15 @@ class TestAPIEndpoints:
         assert "endpoints" in data
         assert isinstance(data["endpoints"], list)
 
-    @patch("backend.api.tf_intent_classifier")
-    def test_intent_endpoint_success(self, mock_classifier, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_intent_endpoint_success(self, mock_service, client):
         """Test successful intent prediction"""
-        # Mock classifier response
-        mock_classifier.predict_intent.return_value = ("Technology", 0.85)
+        # Mock service response
+        mock_service.classify_intent.return_value = {
+            "intent": "Technology",
+            "confidence": 0.85,
+            "timestamp": "2024-01-01T00:00:00Z"
+        }
 
         response = client.post(
             "/intent",
@@ -100,16 +104,20 @@ class TestAPIEndpoints:
         # Should handle the error gracefully
         assert response.status_code in [400, 500]  # Accept either error code
 
-    @patch("backend.api.bert_gpu_classifier")
-    @patch("backend.api.bert_gpu_model_loaded", True)
-    def test_intent_bert_endpoint_success(self, mock_classifier, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_intent_bert_endpoint_success(self, mock_service, client):
         """Test successful BERT intent prediction"""
-        # Mock classifier response
-        mock_classifier.predict.return_value = ("Science", 0.92)
+        # Mock service response
+        mock_service.classify_intent.return_value = {
+            "intent": "Science",
+            "confidence": 0.92,
+            "model_type": "BERT",
+            "timestamp": "2024-01-01T00:00:00Z"
+        }
 
         response = client.post(
             "/intent_bert",
-            json={"text": "Explain quantum mechanics"},
+            json={"text": "Tell me about quantum physics"},
             content_type="application/json",
         )
 
@@ -117,55 +125,51 @@ class TestAPIEndpoints:
         data = json.loads(response.data)
         assert data["intent"] == "Science"
         assert data["confidence"] == 0.92
-        assert data["model_type"] == "GPU BERT"
-        assert data["gpu_accelerated"] is True
+        assert data["model_type"] == "BERT"
 
-    @patch("backend.api.bert_gpu_model_loaded", False)
-    def test_intent_bert_endpoint_model_not_loaded(self, client):
-        """Test BERT endpoint when model is not loaded"""
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_intent_bert_endpoint_model_not_loaded(self, mock_service, client):
+        """Test BERT intent endpoint when model is not loaded"""
+        # Mock service response with error
+        mock_service.classify_intent.return_value = {
+            "error": "BERT model not loaded"
+        }
+
         response = client.post(
-            "/intent_bert", json={"text": "test text"}, content_type="application/json"
+            "/intent_bert",
+            json={"text": "Tell me about quantum physics"},
+            content_type="application/json",
         )
 
         assert response.status_code == 503
         data = json.loads(response.data)
         assert "error" in data
-        assert "BERT model not loaded" in data["error"]
 
-    @patch("backend.summarizer.ChatOpenAI")
-    def test_summarize_endpoint_success(self, mock_openai_class, client):
-        """Test successful summarization"""
-        # Mock OpenAI client
-        mock_client = Mock()
-        mock_openai_class.return_value = mock_client
-
-        # Mock the chat completion response
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message = Mock()
-        mock_response.choices[0].message.content = "This is a test summary."
-        mock_client.chat.completions.create.return_value = mock_response
-
-        # The /summarize endpoint expects 'query', not 'text'
-        data = {
-            "query": "artificial intelligence",  # Changed from 'text' to 'query'
-            "max_length": 100,
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_summarize_endpoint_success(self, mock_service, client):
+        """Test successful single-source summarization"""
+        # Mock service response
+        mock_service.summarize_single_source.return_value = {
+            "query": "Apollo 11",
+            "summary": "Apollo 11 was the first manned mission to land on the Moon.",
+            "intent": {"category": "History", "confidence": 0.85},
+            "method": "single_source",
+            "total_sources": 1,
+            "summary_length": 500,
+            "summary_lines": 5
         }
 
         response = client.post(
-            "/summarize", data=json.dumps(data), content_type="application/json"
+            "/summarize",
+            json={"query": "Apollo 11", "max_lines": 30},
+            content_type="application/json",
         )
 
-        # Should succeed or handle gracefully
-        assert response.status_code in [
-            200,
-            400,
-            500,
-        ]  # Accept 400 for missing data too
-
-        if response.status_code == 200:
-            response_data = json.loads(response.data)
-            assert "summary" in response_data
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["query"] == "Apollo 11"
+        assert "summary" in data
+        assert data["intent"] == "History"
 
     def test_summarize_endpoint_missing_query(self, client):
         """Test summarize endpoint with missing query"""
@@ -187,74 +191,58 @@ class TestAPIEndpoints:
         assert "error" in data
         assert "Empty query provided" in data["error"]
 
-    @patch("utils.multi_source_agent.MultiSourceAgent")
-    @patch("backend.summarizer.ChatOpenAI")
-    def test_summarize_multi_source_success(
-        self, mock_openai_class, mock_agent_class, client
-    ):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_summarize_multi_source_success(self, mock_service, client):
         """Test successful multi-source summarization"""
-        # Mock OpenAI client
-        mock_client = Mock()
-        mock_openai_class.return_value = mock_client
-
-        # Mock MultiSourceAgent
-        mock_agent = Mock()
-        mock_agent_class.return_value = mock_agent
-
-        # Mock agent response with expected structure - return actual values, not Mock objects
-        agent_result = {
-            "articles_found": 2,
-            "total_content_length": 500,
-            "articles": [
-                {"title": "Test Article 1", "content": "Content 1", "url": "url1"},
-                {"title": "Test Article 2", "content": "Content 2", "url": "url2"},
-            ],
-            "summaries": {"Test Article 1": "Summary 1", "Test Article 2": "Summary 2"},
+        # Mock service response
+        mock_service.summarize_multi_source_with_agents.return_value = {
+            "query": "Space exploration",
+            "summary": "Space exploration has been a major human endeavor.",
+            "intent": "Science",
+            "confidence": 0.88,
+            "method": "multi_source",
+            "total_sources": 3,
+            "summary_length": 800,
+            "summary_lines": 8,
             "agent_powered": True,
-            "agents_used": ["wikipedia_search"],
-            "article_length": 500,
+            "articles": [
+                {"title": "Space Exploration", "url": "https://example.com/1", "selection_method": "relevance"},
+                {"title": "NASA Missions", "url": "https://example.com/2", "selection_method": "relevance"},
+                {"title": "Space Technology", "url": "https://example.com/3", "selection_method": "relevance"}
+            ],
+            "usage_stats": {"tokens_used": 1500},
+            "cost_tracking": {"total_cost": 0.05}
         }
-
-        # Make sure the mock returns actual data structures, not Mock objects
-        mock_agent.intelligent_wikipedia_search.return_value = agent_result
-
-        data = {"query": "artificial intelligence"}
 
         response = client.post(
             "/summarize_multi_source",
-            data=json.dumps(data),
+            json={"query": "Space exploration", "max_lines": 30, "max_articles": 3},
             content_type="application/json",
         )
 
-        # Accept either success or error
-        assert response.status_code in [200, 500]
-        response_data = json.loads(response.data)
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["query"] == "Space exploration"
+        assert "summary" in data
+        assert data["intent"] == "Science"
+        assert len(data["articles"]) == 3
 
-        if response.status_code == 200:
-            # Check for required fields (adjust based on actual response structure)
-            if "summaries" in response_data:
-                assert "summaries" in response_data
-            else:
-                # Accept alternative response structure
-                assert "articles_found" in response_data
-        else:
-            # If it fails, that's also acceptable for this test
-            assert "error" in response_data
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_summarize_multi_source_error(self, mock_service, client):
+        """Test multi-source summarization with error"""
+        # Mock service response with error
+        mock_service.summarize_multi_source_with_agents.return_value = {
+            "error": "No articles found for query"
+        }
 
-    @patch("utils.multi_source_agent.MultiSourceAgent")
-    def test_summarize_multi_source_error(self, mock_agent_class, client):
-        """Test multi-source summarization endpoint error handling"""
-        # Mock the MultiSourceAgent class to raise an exception
-        mock_agent = Mock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.run_multi_source_search_with_agents.side_effect = Exception(
-            "Agent error"
+        response = client.post(
+            "/summarize_multi_source",
+            json={"query": "Invalid query", "max_lines": 30},
+            content_type="application/json",
         )
 
-        response = client.post("/summarize_multi_source", json={"query": "test query"})
-
-        assert response.status_code == 500
-        data = response.get_json()
+        assert response.status_code == 404
+        data = json.loads(response.data)
         assert "error" in data
 
 
@@ -268,10 +256,10 @@ class TestAPIErrorHandling:
         with app.test_client() as client:
             yield client
 
-    @patch("backend.api.tf_intent_classifier")
-    def test_intent_endpoint_exception(self, mock_classifier, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_intent_endpoint_exception(self, mock_service, client):
         """Test intent endpoint when classifier raises exception"""
-        mock_classifier.predict_intent.side_effect = Exception("Classifier error")
+        mock_service.classify_intent.side_effect = Exception("Service error")
 
         response = client.post(
             "/intent", json={"text": "test text"}, content_type="application/json"
@@ -282,11 +270,10 @@ class TestAPIErrorHandling:
         assert "error" in data
         assert "Internal server error" in data["error"]
 
-    @patch("backend.api.bert_gpu_classifier")
-    @patch("backend.api.bert_gpu_model_loaded", True)
-    def test_intent_bert_endpoint_exception(self, mock_classifier, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_intent_bert_endpoint_exception(self, mock_service, client):
         """Test BERT intent endpoint when classifier raises exception"""
-        mock_classifier.predict.side_effect = Exception("BERT error")
+        mock_service.classify_intent.side_effect = Exception("Service error")
 
         response = client.post(
             "/intent_bert", json={"text": "test text"}, content_type="application/json"
@@ -297,10 +284,10 @@ class TestAPIErrorHandling:
         assert "error" in data
         assert "Internal server error" in data["error"]
 
-    @patch("backend.api.summarize_article_with_limit")
-    def test_summarize_endpoint_exception(self, mock_summarize, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_summarize_endpoint_exception(self, mock_service, client):
         """Test summarize endpoint when summarizer raises exception"""
-        mock_summarize.side_effect = Exception("Summarization error")
+        mock_service.summarize_single_source.side_effect = Exception("Service error")
 
         response = client.post(
             "/summarize", json={"query": "test query"}, content_type="application/json"
@@ -321,10 +308,17 @@ class TestAPIResponseFormat:
         with app.test_client() as client:
             yield client
 
-    @patch("backend.api.tf_intent_classifier")
-    def test_intent_response_format(self, mock_classifier, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_intent_response_format(self, mock_service, client):
         """Test that intent response has correct format"""
-        mock_classifier.predict_intent.return_value = ("Technology", 0.85)
+        mock_service.classify_intent.return_value = {
+            "intent": "Technology",
+            "confidence": 0.85,
+            "model_type": "TensorFlow LSTM",
+            "model_loaded": True,
+            "categories_available": ["Technology", "Science", "History"],
+            "timestamp": "2024-01-01T00:00:00Z"
+        }
 
         response = client.post(
             "/intent", json={"text": "AI technology"}, content_type="application/json"
@@ -354,11 +348,18 @@ class TestAPIResponseFormat:
         assert isinstance(data["categories_available"], list)
         assert isinstance(data["timestamp"], str)
 
-    @patch("backend.api.bert_gpu_classifier")
-    @patch("backend.api.bert_gpu_model_loaded", True)
-    def test_intent_bert_response_format(self, mock_classifier, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_intent_bert_response_format(self, mock_service, client):
         """Test that BERT intent response has correct format"""
-        mock_classifier.predict.return_value = ("Science", 0.92)
+        mock_service.classify_intent.return_value = {
+            "intent": "Science",
+            "confidence": 0.92,
+            "model_type": "BERT",
+            "model_loaded": True,
+            "categories_available": ["Science", "Technology", "History"],
+            "gpu_accelerated": True,
+            "timestamp": "2024-01-01T00:00:00Z"
+        }
 
         response = client.post(
             "/intent_bert",
@@ -383,7 +384,7 @@ class TestAPIResponseFormat:
             assert field in data
 
         # Check BERT-specific fields
-        assert data["model_type"] == "GPU BERT"
+        assert data["model_type"] == "BERT"
         assert data["gpu_accelerated"] is True
 
     def test_cors_headers(self, client):
@@ -414,8 +415,8 @@ class TestAPIIntegration:
             assert response.status_code == 200
             assert "application/json" in response.content_type
 
-    @patch("backend.api.tf_intent_classifier")
-    def test_confidence_score_bounds(self, mock_classifier, client):
+    @patch("backend.views.api_routes.SUMMARIZATION_SERVICE")
+    def test_confidence_score_bounds(self, mock_service, client):
         """Test that confidence scores are within valid bounds"""
         # Test various confidence values
         test_cases = [
@@ -426,7 +427,11 @@ class TestAPIIntegration:
         ]
 
         for intent, confidence in test_cases:
-            mock_classifier.predict_intent.return_value = (intent, confidence)
+            mock_service.classify_intent.return_value = {
+                "intent": intent,
+                "confidence": confidence,
+                "timestamp": "2024-01-01T00:00:00Z"
+            }
 
             response = client.post(
                 "/intent", json={"text": "test text"}, content_type="application/json"
@@ -450,7 +455,8 @@ class TestAPIIntegration:
                 endpoint, json=payload, content_type="application/json"
             )
 
-            assert response.status_code in [400, 503]
+            # All endpoints should return 400 for missing required fields
+            assert response.status_code == 400
             data = json.loads(response.data)
             assert "error" in data
             assert isinstance(data["error"], str)

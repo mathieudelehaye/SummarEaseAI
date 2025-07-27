@@ -340,7 +340,7 @@ class TestFormatSummarizationResponse:
 
         metadata = response["metadata"]
         assert metadata["intent"]["category"] == "Science"
-        assert metadata["confidence"] == 0.9
+        assert metadata["intent"]["confidence"] == 0.9
         assert metadata["method"] == "multi_source"
         assert metadata["total_sources"] == 3
         assert metadata["summary_length"] == 150

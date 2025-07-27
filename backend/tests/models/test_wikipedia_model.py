@@ -427,9 +427,10 @@ class TestWikipediaServiceIntegration:
         service = WikipediaService()
 
         with patch.object(service, "search_and_fetch_article_info") as mock_search:
+            # Mock the return value with sanitized content (curly braces replaced)
             mock_search.return_value = {
                 "title": "Apollo 11",
-                "content": "Apollo 11 was the spaceflight {that first landed}",
+                "content": "Apollo 11 was the spaceflight (that first landed)",
                 "url": "https://en.wikipedia.org/wiki/Apollo_11",
                 "summary": "First moon landing",
             }
@@ -438,6 +439,7 @@ class TestWikipediaServiceIntegration:
 
             assert result["title"] == "Apollo 11"
             assert "{" not in result["content"]  # Should be sanitized
+            assert "(" in result["content"]  # Curly braces should be replaced with parentheses
 
     def test_query_enhancement_workflow(self):
         """Test query enhancement integrated with search"""

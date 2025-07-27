@@ -99,6 +99,76 @@ def sample_intent_data():
     ]
 
 
+@pytest.fixture
+def mock_agent_system():
+    """Mock agent system for testing"""
+    mock_system = Mock()
+    mock_system.plan_search_strategy.return_value = {
+        "primary_queries": ["test query"],
+        "secondary_queries": [],
+        "search_strategy": "direct"
+    }
+    mock_system.gather_articles.return_value = [
+        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+    ]
+    mock_system.analyze_intent.return_value = {"intent": "Science", "confidence": 0.85}
+    mock_system.rank_articles.return_value = [
+        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+    ]
+    return mock_system
+
+
+@pytest.fixture
+def mock_agent_system_class():
+    """Mock agent system class for testing"""
+    mock_class = Mock()
+    mock_instance = Mock()
+    mock_instance.plan_search_strategy.return_value = {
+        "primary_queries": ["test query"],
+        "secondary_queries": [],
+        "search_strategy": "direct"
+    }
+    mock_instance.gather_articles.return_value = [
+        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+    ]
+    mock_instance.analyze_intent.return_value = {"intent": "Science", "confidence": 0.85}
+    mock_instance.rank_articles.return_value = [
+        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+    ]
+    mock_class.return_value = mock_instance
+    return mock_class
+
+
+@pytest.fixture
+def mock_query_gen():
+    """Mock query generator for testing"""
+    mock_gen = Mock()
+    mock_gen.generate_queries.return_value = ["test query 1", "test query 2"]
+    mock_gen.expand_query.return_value = ["expanded query"]
+    return mock_gen
+
+
+@pytest.fixture
+def mock_query_gen_class():
+    """Mock query generator class for testing"""
+    mock_class = Mock()
+    mock_instance = Mock()
+    mock_instance.generate_queries.return_value = ["test query 1", "test query 2"]
+    mock_instance.expand_query.return_value = ["expanded query"]
+    mock_class.return_value = mock_instance
+    return mock_class
+
+
+@pytest.fixture
+def mock_get_classifier():
+    """Mock get_classifier function for testing"""
+    mock_classifier = Mock()
+    mock_classifier.load_model.return_value = True
+    mock_classifier.predict.return_value = ("Technology", 0.85)
+    mock_classifier.is_loaded.return_value = True
+    return mock_classifier
+
+
 @pytest.fixture(autouse=True)
 def setup_test_environment():
     """Setup test environment variables"""

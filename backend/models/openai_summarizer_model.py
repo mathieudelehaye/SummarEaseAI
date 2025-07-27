@@ -30,6 +30,11 @@ except ImportError:
         LANGCHAIN_AVAILABLE = True
     except ImportError:
         LANGCHAIN_AVAILABLE = False
+        # Set these to None for mocking in tests
+        LLMChain = None
+        ChatOpenAI = None
+        PromptTemplate = None
+        RecursiveCharacterTextSplitter = None
         logging.warning(
             "LangChain not available. OpenAI summarization will be disabled."
         )
@@ -72,6 +77,8 @@ def get_openai_api_key() -> Optional[str]:
 
 def estimate_tokens(text: str) -> int:
     """Rough estimation of token count for text"""
+    if not text:
+        return 0
     # Rough estimation: 1 token ≈ 4 characters for English text
     return len(text) // 4
 
@@ -97,7 +104,7 @@ def chunk_text_for_openai(text: str, max_chunk_tokens: int = 12000) -> List[str]
     Returns:
         List of text chunks
     """
-    if not LANGCHAIN_AVAILABLE:
+    if not LANGCHAIN_AVAILABLE or not RecursiveCharacterTextSplitter:
         # Simple fallback chunking
         words = text.split()
         chunk_size = max_chunk_tokens * 3  # Rough estimation: 1 token ≈ 0.75 words
@@ -127,7 +134,7 @@ def chunk_text_for_openai(text: str, max_chunk_tokens: int = 12000) -> List[str]
             )
 
         return chunks
-    except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+    except (ImportError, AttributeError, ValueError, TypeError, OSError, Exception) as e:
         logger.warning(
             "Error using LangChain text splitter, falling back to simple chunking: %s",
             e,
@@ -144,7 +151,7 @@ def chunk_text_for_openai(text: str, max_chunk_tokens: int = 12000) -> List[str]
 
 def create_summarization_chain():
     """Create a LangChain summarization chain"""
-    if not LANGCHAIN_AVAILABLE:
+    if not LANGCHAIN_AVAILABLE or not ChatOpenAI or not LLMChain or not PromptTemplate:
         return None
 
     api_key = get_openai_api_key()
@@ -190,7 +197,7 @@ def create_summarization_chain():
 
 def create_line_limited_chain(max_lines: int = 30):
     """Create a summarization chain with line limit"""
-    if not LANGCHAIN_AVAILABLE:
+    if not LANGCHAIN_AVAILABLE or not ChatOpenAI or not LLMChain or not PromptTemplate:
         return None
 
     api_key = get_openai_api_key()
@@ -233,7 +240,7 @@ def create_line_limited_chain(max_lines: int = 30):
 
 def create_intent_aware_chain(intent: str, confidence: float):
     """Create a summarization chain tailored to the detected intent"""
-    if not LANGCHAIN_AVAILABLE:
+    if not LANGCHAIN_AVAILABLE or not ChatOpenAI or not LLMChain or not PromptTemplate:
         return None
 
     api_key = get_openai_api_key()

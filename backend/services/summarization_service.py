@@ -106,7 +106,7 @@ class SummarizationService:
                     "all_scores": {},
                 }
             return {"error": "Invalid prediction format"}
-        except (KeyError, ValueError, AttributeError) as e:
+        except Exception as e:
             logger.error("Error in BERT prediction: %s", e)
             return {
                 "error": str(e),
@@ -195,7 +195,7 @@ class SummarizationService:
 
             return result
 
-        except (ValueError, KeyError, wikipedia.PageError, ConnectionError) as e:
+        except Exception as e:
             logger.error("Error in single source summarization: %s", e)
             return {
                 "error": str(e),
@@ -216,7 +216,7 @@ class SummarizationService:
             result["method"] = "single_source_placeholder"
             return result
 
-        except (ValueError, KeyError, wikipedia.PageError, ConnectionError) as e:
+        except Exception as e:
             logger.error("Error in multi-source summarization: %s", e)
             return {"error": str(e), "query": query, "summary": None}
 

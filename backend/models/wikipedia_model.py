@@ -29,13 +29,20 @@ class WikipediaService:
 
     def __init__(self):
         # Set user agent for API compliance
-        self.wiki_api = wikipediaapi.Wikipedia(
-            language="en",
-            user_agent="SummarEaseAI/1.0 (https://github.com/your-repo) Python/WikipediaAPI",
-        )
+        try:
+            self.wiki_api = wikipediaapi.Wikipedia(
+                language="en",
+                user_agent="SummarEaseAI/1.0 (https://github.com/your-repo) Python/WikipediaAPI",
+            )
+        except Exception as e:
+            logger.error("Failed to initialize Wikipedia API: %s", str(e))
+            self.wiki_api = None
 
         # Set user agent for wikipedia library
-        wikipedia.set_user_agent("SummarEaseAI/1.0 (https://github.com/your-repo)")
+        try:
+            wikipedia.set_user_agent("SummarEaseAI/1.0 (https://github.com/your-repo)")
+        except Exception as e:
+            logger.error("Failed to set Wikipedia user agent: %s", str(e))
 
         logger.info("✅ Wikipedia Service initialized")
 
@@ -103,6 +110,11 @@ class WikipediaService:
             # Preprocess historical queries
             processed_topic, _ = self.preprocess_historical_query(topic)
 
+            # Check if wiki_api is available
+            if self.wiki_api is None:
+                logger.error("Wikipedia API not initialized")
+                return None
+
             page = self.wiki_api.page(processed_topic)
 
             if page.exists():
@@ -129,13 +141,8 @@ class WikipediaService:
                 "Direct page not found for '%s', trying search...", processed_topic
             )
             return self.search_and_fetch_article(processed_topic)
-        except (
-            wikipedia.PageError,
-            wikipedia.DisambiguationError,
-            ConnectionError,
-            ValueError,
-            KeyError,
-        ) as e:
+
+        except Exception as e:
             logger.error("Error fetching article '%s': %s", topic, str(e))
             return None
 
@@ -228,7 +235,11 @@ class WikipediaService:
             )
 
             # Use wikipedia library for better search functionality
-            search_results = wikipedia.search(processed_query, results=max_results + 2)
+            try:
+                search_results = wikipedia.search(processed_query, results=max_results + 2)
+            except Exception as search_error:
+                logger.error("Error in Wikipedia search: %s", str(search_error))
+                return None
 
             logger.info(
                 "✅ Wikipedia API returned %d search results:", len(search_results)
@@ -319,13 +330,7 @@ class WikipediaService:
             logger.info("=" * 80)
             return None
 
-        except (
-            wikipedia.PageError,
-            wikipedia.DisambiguationError,
-            ConnectionError,
-            ValueError,
-            KeyError,
-        ) as e:
+        except Exception as e:
             logger.error("❌ Error searching for article '%s': %s", query, str(e))
             logger.info("=" * 80)
             return None
@@ -642,7 +647,15 @@ class WikipediaService:
             logger.info("📊 Max results requested: %d", max_results)
 
             # Search Wikipedia
-            search_results = wikipedia.search(processed_query, results=max_results)
+            try:
+                search_results = wikipedia.search(processed_query, results=max_results)
+            except Exception as search_error:
+                logger.error(
+                    "❌ Error in Wikipedia search for '%s': %s", processed_query, str(search_error)
+                )
+                # Fallback to basic search
+                logger.info("🔄 Falling back to basic Wikipedia search")
+                return self.search_and_fetch_article_info(query, max_results)
 
             logger.info(
                 "✅ Wikipedia API returned %d search results:", len(search_results)
