@@ -129,7 +129,13 @@ class WikipediaService:
                 "Direct page not found for '%s', trying search...", processed_topic
             )
             return self.search_and_fetch_article(processed_topic)
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+            KeyError,
+        ) as e:
             logger.error("Error fetching article '%s': %s", topic, str(e))
             return None
 
@@ -176,16 +182,22 @@ class WikipediaService:
                         logger.info("Resolved disambiguation to: %s", e.options[0])
                         # Sanitize content before returning
                         return self.sanitize_wikipedia_content(page.content)
-                    except Exception:
+                    except (wikipedia.PageError, ConnectionError, ValueError):
                         continue
-                except Exception:
+                except (wikipedia.PageError, ConnectionError, ValueError):
                     continue
 
             logger.warning("No suitable article found for query: %s", query)
             return None
 
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+        ) as e:
             logger.error("Error searching for article '%s': %s", query, str(e))
+            logger.info("=" * 80)
             return None
 
     def search_and_fetch_article_info(
@@ -286,13 +298,18 @@ class WikipediaService:
                             "url": page.url,
                             "summary": page.summary,
                         }
-                    except Exception as disambiguation_error:
+                    except (
+                        wikipedia.PageError,
+                        wikipedia.DisambiguationError,
+                        ConnectionError,
+                        ValueError,
+                    ) as disambiguation_error:
                         logger.error(
                             "❌ Failed to resolve disambiguation: %s",
                             str(disambiguation_error),
                         )
                         continue
-                except Exception as page_error:
+                except (wikipedia.PageError, ConnectionError, ValueError) as page_error:
                     logger.error(
                         "❌ Error fetching page '%s': %s", result, str(page_error)
                     )
@@ -302,7 +319,13 @@ class WikipediaService:
             logger.info("=" * 80)
             return None
 
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+            KeyError,
+        ) as e:
             logger.error("❌ Error searching for article '%s': %s", query, str(e))
             logger.info("=" * 80)
             return None
@@ -329,7 +352,13 @@ class WikipediaService:
 
             return article_content, processed_topic, was_converted
 
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+            KeyError,
+        ) as e:
             logger.error(
                 "Error fetching article with conversion info '%s': %s", topic, str(e)
             )
@@ -499,6 +528,86 @@ class WikipediaService:
 
         return query
 
+    def _fetch_wikipedia_page(
+        self,
+        page_title: str,
+        query: str,
+        search_results: List[str],
+        optimized_query: str,
+    ) -> Optional[Dict[str, str]]:
+        """Fetch a Wikipedia page and return article info."""
+        try:
+            # Use auto_suggest=False to prevent disambiguation issues
+            page = wikipedia.page(page_title, auto_suggest=False)
+
+            logger.info("✅ Successfully fetched page!")
+            logger.info("📄 Page title: %s", page.title)
+            logger.info("🔗 Page URL: %s", page.url)
+            logger.info("=" * 80)
+
+            # Sanitize content before returning
+            sanitized_content = self.sanitize_wikipedia_content(page.content)
+
+            return {
+                "content": sanitized_content,
+                "title": page.title,
+                "url": page.url,
+                "summary": page.summary,
+                "search_method": "simple_agentic",
+                "original_query": query,
+                "optimized_query": optimized_query,
+                "selected_from": search_results,
+            }
+
+        except wikipedia.exceptions.DisambiguationError as e:
+            logger.info("⚠️  Disambiguation page encountered for '%s'", page_title)
+            logger.info("📋 Available options: %s...", e.options[:5])
+
+            # Use simple logic to select disambiguation option
+            best_option = self._simple_disambiguation_selection(query, e.options[:5])
+
+            logger.info("🔄 Trying disambiguation option: '%s'", best_option)
+
+            try:
+                page = wikipedia.page(best_option, auto_suggest=False)
+                logger.info("✅ Resolved disambiguation to: %s", best_option)
+                logger.info("=" * 80)
+
+                # Sanitize content before returning
+                sanitized_content = self.sanitize_wikipedia_content(page.content)
+
+                return {
+                    "content": sanitized_content,
+                    "title": page.title,
+                    "url": page.url,
+                    "summary": page.summary,
+                    "search_method": "simple_agentic",
+                    "original_query": query,
+                    "optimized_query": optimized_query,
+                    "selected_from": search_results,
+                    "disambiguation_resolved": best_option,
+                }
+
+            except (
+                wikipedia.PageError,
+                wikipedia.DisambiguationError,
+                ConnectionError,
+                ValueError,
+            ) as disambiguation_error:
+                logger.error(
+                    "❌ Failed to resolve disambiguation: %s",
+                    str(disambiguation_error),
+                )
+                return None
+
+        except (
+            wikipedia.PageError,
+            ConnectionError,
+            ValueError,
+        ) as page_error:
+            logger.error("❌ Error fetching page '%s': %s", page_title, str(page_error))
+            return None
+
     def search_and_fetch_article_agentic_simple(
         self, query: str, max_results: int = 3
     ) -> Optional[Dict[str, str]]:
@@ -556,76 +665,17 @@ class WikipediaService:
             logger.info("=" * 80)
             logger.info("🎯 Selected page: '%s'", selected_page)
 
-            try:
-                # Use auto_suggest=False to prevent disambiguation issues
-                page = wikipedia.page(selected_page, auto_suggest=False)
+            return self._fetch_wikipedia_page(
+                selected_page, query, search_results, optimized_query
+            )
 
-                logger.info("✅ Successfully fetched page!")
-                logger.info("📄 Page title: %s", page.title)
-                logger.info("🔗 Page URL: %s", page.url)
-                logger.info("=" * 80)
-
-                # Sanitize content before returning
-                sanitized_content = self.sanitize_wikipedia_content(page.content)
-
-                return {
-                    "content": sanitized_content,
-                    "title": page.title,
-                    "url": page.url,
-                    "summary": page.summary,
-                    "search_method": "simple_agentic",
-                    "original_query": query,
-                    "optimized_query": optimized_query,
-                    "selected_from": search_results,
-                }
-
-            except wikipedia.exceptions.DisambiguationError as e:
-                logger.info(
-                    "⚠️  Disambiguation page encountered for '%s'", selected_page
-                )
-                logger.info("📋 Available options: %s...", e.options[:5])
-
-                # Use simple logic to select disambiguation option
-                best_option = self._simple_disambiguation_selection(
-                    query, e.options[:5]
-                )
-
-                logger.info("🔄 Trying disambiguation option: '%s'", best_option)
-
-                try:
-                    page = wikipedia.page(best_option, auto_suggest=False)
-                    logger.info("✅ Resolved disambiguation to: %s", best_option)
-                    logger.info("=" * 80)
-
-                    # Sanitize content before returning
-                    sanitized_content = self.sanitize_wikipedia_content(page.content)
-
-                    return {
-                        "content": sanitized_content,
-                        "title": page.title,
-                        "url": page.url,
-                        "summary": page.summary,
-                        "search_method": "simple_agentic_disambiguation",
-                        "original_query": query,
-                        "optimized_query": optimized_query,
-                        "selected_from": search_results,
-                        "disambiguation_resolved": best_option,
-                    }
-
-                except Exception as disambiguation_error:
-                    logger.error(
-                        "❌ Failed to resolve disambiguation: %s",
-                        str(disambiguation_error),
-                    )
-                    return None
-
-            except Exception as page_error:
-                logger.error(
-                    "❌ Error fetching page '%s': %s", selected_page, str(page_error)
-                )
-                return None
-
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+            KeyError,
+        ) as e:
             logger.error(
                 "❌ Error in simple agentic search for '%s': %s", query, str(e)
             )
@@ -730,16 +780,22 @@ class WikipediaService:
         return options[0]
 
 
-# Global service instance
-_WIKIPEDIA_SERVICE = None
+class _WikipediaServiceSingleton:
+    """Singleton wrapper for WikipediaService"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> WikipediaService:
+        """Get or create the singleton service instance"""
+        if cls._instance is None:
+            cls._instance = WikipediaService()
+        return cls._instance
 
 
 def get_wikipedia_service() -> WikipediaService:
     """Get or create global Wikipedia service instance"""
-    global _WIKIPEDIA_SERVICE
-    if _WIKIPEDIA_SERVICE is None:
-        _WIKIPEDIA_SERVICE = WikipediaService()
-    return _WIKIPEDIA_SERVICE
+    return _WikipediaServiceSingleton.get_instance()
 
 
 # Compatibility functions for existing imports

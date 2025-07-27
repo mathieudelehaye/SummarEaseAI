@@ -124,13 +124,19 @@ class LLMClient:
         return api_key is not None and len(api_key.strip()) > 0
 
 
-# Global client instance for reuse
-_LLM_CLIENT = None
+class _LLMClientSingleton:
+    """Singleton wrapper for LLMClient"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> LLMClient:
+        """Get or create the singleton client instance"""
+        if cls._instance is None:
+            cls._instance = LLMClient()
+        return cls._instance
 
 
 def get_llm_client() -> LLMClient:
     """Get or create global LLM client instance"""
-    global _LLM_CLIENT
-    if _LLM_CLIENT is None:
-        _LLM_CLIENT = LLMClient()
-    return _LLM_CLIENT
+    return _LLMClientSingleton.get_instance()

@@ -4,14 +4,13 @@ Summarization module using LangChain and OpenAI for intelligent Wikipedia articl
 
 import os
 import logging
-from typing import Optional
+from typing import Optional, List
 
 # Updated LangChain imports for newer versions
 try:
     from langchain_openai import ChatOpenAI
     from langchain.prompts import PromptTemplate
     from langchain.chains import LLMChain
-    from langchain.schema import BaseOutputParser
     from langchain.text_splitter import RecursiveCharacterTextSplitter
 
     LANGCHAIN_AVAILABLE = True
@@ -21,7 +20,6 @@ except ImportError:
         from langchain.chat_models import ChatOpenAI
         from langchain.prompts import PromptTemplate
         from langchain.chains import LLMChain
-        from langchain.schema import BaseOutputParser
         from langchain.text_splitter import RecursiveCharacterTextSplitter
 
         LANGCHAIN_AVAILABLE = True
@@ -41,27 +39,24 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class SummaryOutputParser(BaseOutputParser):
-    """Custom output parser for summary responses"""
+def parse_summary_output(text: str) -> str:
+    """Parse the output from the LLM"""
+    # Clean up the response
+    summary = text.strip()
 
-    def parse(self, text: str) -> str:
-        """Parse the output from the LLM"""
-        # Clean up the response
-        summary = text.strip()
+    # Remove any unwanted prefixes
+    prefixes_to_remove = [
+        "Summary:",
+        "Here's a summary:",
+        "Here is a summary:",
+        "The summary is:",
+    ]
 
-        # Remove any unwanted prefixes
-        prefixes_to_remove = [
-            "Summary:",
-            "Here's a summary:",
-            "Here is a summary:",
-            "The summary is:",
-        ]
+    for prefix in prefixes_to_remove:
+        if summary.lower().startswith(prefix.lower()):
+            summary = summary[len(prefix) :].strip()
 
-        for prefix in prefixes_to_remove:
-            if summary.lower().startswith(prefix.lower()):
-                summary = summary[len(prefix) :].strip()
-
-        return summary
+    return summary
 
 
 def get_openai_api_key() -> Optional[str]:
@@ -114,7 +109,7 @@ def chunk_text_for_openai(text: str, max_chunk_tokens: int = 12000) -> list[str]
             )
 
         return chunks
-    except Exception as e:
+    except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
         logger.warning(
             "Error using LangChain text splitter, falling back to simple chunking: %s",
             e,
@@ -197,11 +192,11 @@ def create_summarization_chain():
         )
 
         # Create the chain
-        chain = LLMChain(llm=llm, prompt=prompt, output_parser=SummaryOutputParser())
+        chain = LLMChain(llm=llm, prompt=prompt, output_parser=parse_summary_output)
 
         return chain
 
-    except Exception as e:
+    except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
         logger.error("Error creating summarization chain: %s", str(e))
         return None
 
@@ -240,13 +235,70 @@ def create_line_limited_chain(max_lines: int = 30):
             input_variables=["article_text"], template=prompt_template
         )
 
-        chain = LLMChain(llm=llm, prompt=prompt, output_parser=SummaryOutputParser())
+        chain = LLMChain(llm=llm, prompt=prompt, output_parser=parse_summary_output)
 
         return chain
 
-    except Exception as e:
+    except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
         logger.error("Error creating line-limited chain: %s", str(e))
         return None
+
+
+def _validate_summarization_input(article_text: str) -> tuple[str, str] | None:
+    """Validate input for summarization.
+    Returns (error_message, error_type) if invalid, None if valid."""
+    if not LANGCHAIN_AVAILABLE:
+        return (
+            "Error: LangChain not available. Please install langchain and "
+            "langchain-openai packages.",
+            "missing_dependency",
+        )
+
+    if not article_text or len(article_text.strip()) == 0:
+        return ("Error: No article content provided", "empty_content")
+
+    if len(article_text.strip()) < 100:
+        return (
+            "Error: Article content too short to summarize effectively",
+            "too_short",
+        )
+
+    return None
+
+
+def _process_chunked_summarization(chain, article_text: str) -> str:
+    """Process long articles by chunking and summarizing."""
+    logger.info("Article too long, chunking for processing...")
+    chunks = chunk_text_for_openai(article_text, max_chunk_tokens=12000)
+    summaries = []
+
+    for i, chunk in enumerate(chunks):
+        logger.info("Processing chunk %d/%d", i + 1, len(chunks))
+        safe_chunk = sanitize_article_text(chunk)
+        chunk_summary = chain.run(article_text=safe_chunk)
+        if chunk_summary and chunk_summary.strip():
+            summaries.append(chunk_summary.strip())
+
+    if not summaries:
+        return "Error: No summaries generated from chunks"
+
+    # If we have multiple chunk summaries, combine them
+    if len(summaries) > 1:
+        logger.info("Combining chunk summaries...")
+        combined_text = "\n\n".join(summaries)
+        # Summarize the combined summaries if they're still too long
+        if estimate_tokens(combined_text) > 12000:
+            final_summary = chain.run(
+                article_text=combined_text[: 12000 * 4]
+            )  # Rough char limit
+            return final_summary
+        final_summary = chain.run(article_text=combined_text)
+        return (
+            final_summary.strip()
+            if final_summary
+            else "Error: Final summary generation failed"
+        )
+    return summaries[0]
 
 
 def summarize_article(article_text: str) -> str:
@@ -259,18 +311,10 @@ def summarize_article(article_text: str) -> str:
     Returns:
         Generated summary or error message
     """
-    if not LANGCHAIN_AVAILABLE:
-        return (
-            "Error: LangChain not available. Please install langchain and "
-            "langchain-openai packages."
-        )
-
-    if not article_text or len(article_text.strip()) == 0:
-        return "Error: No article content provided"
-
-    # Check if article is too short
-    if len(article_text.strip()) < 100:
-        return "Error: Article content too short to summarize effectively"
+    # Validate input
+    validation_error = _validate_summarization_input(article_text)
+    if validation_error:
+        return validation_error[0]
 
     try:
         chain = create_summarization_chain()
@@ -290,40 +334,8 @@ def summarize_article(article_text: str) -> str:
         logger.info("📄 Article content preview (first 500 chars): %s", article_preview)
 
         if estimated_tokens > 12000:  # Leave room for prompt and completion
-            logger.info("Article too long, chunking for processing...")
-            chunks = chunk_text_for_openai(article_text, max_chunk_tokens=12000)
-            summaries = []
+            return _process_chunked_summarization(chain, article_text)
 
-            for i, chunk in enumerate(chunks):
-                logger.info("Processing chunk %d/%d", i + 1, len(chunks))
-                safe_chunk = sanitize_article_text(chunk)
-                chunk_summary = chain.run(article_text=safe_chunk)
-                if chunk_summary and chunk_summary.strip():
-                    summaries.append(chunk_summary.strip())
-
-            if not summaries:
-                return "Error: No summaries generated from chunks"
-
-            # If we have multiple chunk summaries, combine them
-            if len(summaries) > 1:
-                logger.info("Combining chunk summaries...")
-                combined_text = "\n\n".join(summaries)
-                # Summarize the combined summaries if they're still too long
-                if estimate_tokens(combined_text) > 12000:
-                    final_summary = chain.run(
-                        article_text=combined_text[: 12000 * 4]
-                    )  # Rough char limit
-                    return (
-                        final_summary,
-                        f"Combined {len(summaries)} chunks into final summary",
-                    )
-                final_summary = chain.run(article_text=combined_text)
-                return (
-                    final_summary.strip()
-                    if final_summary
-                    else "Error: Final summary generation failed"
-                )
-            return summaries[0]
         # Text is short enough, process normally
         logger.info("Generating summary using OpenAI...")
         summary = chain.run(article_text=article_text)
@@ -334,9 +346,164 @@ def summarize_article(article_text: str) -> str:
         logger.info("Summary generated successfully")
         return summary.strip()
 
-    except Exception as e:
+    except (
+        ValueError,
+        KeyError,
+        AttributeError,
+        ConnectionError,
+        TimeoutError,
+        TypeError,
+    ) as e:
         logger.error("Error during summarization: %s", str(e))
         return f"Error generating summary: {str(e)}"
+
+
+def _process_line_limited_chunks(
+    chain, chunks: List[str], prompt_template: str
+) -> List[str]:
+    """Process chunks for line-limited summarization."""
+    summaries = []
+
+    for i, chunk in enumerate(chunks):
+        logger.info("Processing chunk %d/%d (line-limited)", i + 1, len(chunks))
+
+        # Log what's being sent to ChatGPT for this chunk
+        chunk_preview = chunk[:300] + "..." if len(chunk) > 300 else chunk
+        logger.info("🤖 Sending to ChatGPT chunk %d preview: %s", i + 1, chunk_preview)
+
+        # Log the exact prompt being sent to ChatGPT
+        log_chatgpt_request(prompt_template, chunk, chunk_number=i + 1)
+
+        chunk_summary = chain.run(article_text=chunk)
+
+        # Log what ChatGPT returned for this chunk
+        if chunk_summary and chunk_summary.strip():
+            logger.info(
+                "✅ ChatGPT returned for chunk %d: %s...",
+                i + 1,
+                chunk_summary.strip()[:200],
+            )
+            summaries.append(chunk_summary.strip())
+        else:
+            logger.warning(
+                "❌ ChatGPT returned empty/invalid response for chunk %d", i + 1
+            )
+
+    return summaries
+
+
+def _combine_chunk_summaries(summaries: List[str], max_lines: int) -> str:
+    """Combine multiple chunk summaries into a single coherent summary."""
+    logger.info("Combining chunk summaries...")
+    combined_text = "\n\n".join(summaries)
+
+    # Create a special chain for combining summaries with better focus
+    try:
+        llm = ChatOpenAI(
+            openai_api_key=get_openai_api_key(),
+            model_name="gpt-3.5-turbo-16k",
+            temperature=0.3,
+            max_tokens=min(max_lines * 20, 1000),
+        )
+
+        combine_prompt = f"""
+        Please combine and synthesize the following summaries into a single, coherent summary.
+        Focus on the main topic and primary events. The summary should be exactly {max_lines} lines or fewer.
+        Prioritize the most important information about the main subject.
+        
+        Summaries to combine:
+        {{article_text}}
+        
+        Final unified summary (max {max_lines} lines):
+        """
+
+        combine_prompt_template = PromptTemplate(
+            input_variables=["article_text"], template=combine_prompt
+        )
+
+        combine_chain = LLMChain(
+            llm=llm,
+            prompt=combine_prompt_template,
+            output_parser=parse_summary_output,
+        )
+
+        final_summary = combine_chain.run(article_text=combined_text)
+        return final_summary.strip() if final_summary else combined_text
+
+    except (
+        ValueError,
+        KeyError,
+        AttributeError,
+        ConnectionError,
+        TimeoutError,
+        TypeError,
+    ) as e:
+        logger.error("Error combining summaries: %s", str(e))
+        return combined_text
+
+
+def _validate_line_limited_input(
+    article_text: str, max_lines: int
+) -> tuple[str, int] | None:
+    """Validate input for line-limited summarization.
+    Returns error message if invalid, None if valid."""
+    if not LANGCHAIN_AVAILABLE:
+        return (
+            "Error: LangChain not available. Please install langchain and "
+            "langchain-openai packages.",
+            max_lines,
+        )
+
+    if not article_text or len(article_text.strip()) == 0:
+        return "Error: No article content provided", max_lines
+
+    # Adjust max_lines to valid range
+    if max_lines < 5:
+        max_lines = 5
+    elif max_lines > 100:
+        max_lines = 100
+
+    return None, max_lines
+
+
+def _process_short_article(
+    chain, article_text: str, prompt_template: str, max_lines: int
+) -> str:
+    """Process short articles that don't need chunking."""
+    logger.info("Generating summary with max %d lines...", max_lines)
+
+    # Log the exact prompt being sent to ChatGPT for single processing
+    log_chatgpt_request(prompt_template, article_text)
+
+    summary = chain.run(article_text=article_text)
+
+    if not summary or len(summary.strip()) == 0:
+        return "Error: Generated summary is empty"
+
+    # Post-process to ensure line limit
+    lines = summary.strip().split("\n")
+    if len(lines) > max_lines:
+        summary = "\n".join(lines[:max_lines])
+
+    logger.info("Summary generated successfully (%d lines)", len(lines))
+    return summary.strip()
+
+
+def _process_long_article(
+    chain, article_text: str, prompt_template: str, max_lines: int
+) -> str:
+    """Process long articles that need chunking."""
+    logger.info("Article too long, chunking for processing...")
+    chunks = chunk_text_for_openai(article_text, max_chunk_tokens=12000)
+    summaries = _process_line_limited_chunks(chain, chunks, prompt_template)
+
+    if not summaries:
+        return "Error: No summaries generated from chunks"
+
+    # If we have multiple chunk summaries, combine them
+    if len(summaries) > 1:
+        return _combine_chunk_summaries(summaries, max_lines)
+    return summaries[0]
 
 
 def summarize_article_with_limit(article_text: str, max_lines: int = 30) -> str:
@@ -350,22 +517,15 @@ def summarize_article_with_limit(article_text: str, max_lines: int = 30) -> str:
     Returns:
         Generated summary or error message
     """
-    if not LANGCHAIN_AVAILABLE:
-        return (
-            "Error: LangChain not available. Please install langchain and "
-            "langchain-openai packages."
-        )
-
-    if not article_text or len(article_text.strip()) == 0:
-        return "Error: No article content provided"
-
-    if max_lines < 5:
-        max_lines = 5
-    elif max_lines > 100:
-        max_lines = 100
+    # Validate input
+    validation_error, adjusted_max_lines = _validate_line_limited_input(
+        article_text, max_lines
+    )
+    if validation_error:
+        return validation_error
 
     try:
-        chain = create_line_limited_chain(max_lines)
+        chain = create_line_limited_chain(adjusted_max_lines)
         if not chain:
             return (
                 "Error: Could not initialize OpenAI summarization. Check your API key."
@@ -374,7 +534,7 @@ def summarize_article_with_limit(article_text: str, max_lines: int = 30) -> str:
         # Get the prompt template for logging
         prompt_template = f"""
         Please provide a summary of the following Wikipedia article content.
-        The summary should be exactly {max_lines} lines or fewer.
+        The summary should be exactly {adjusted_max_lines} lines or fewer.
         Make it informative and well-structured.
         
         IMPORTANT: Focus on the main topic and events described in the article. If this is about a specific historical event or date, prioritize information about that main event rather than background or related incidents.
@@ -382,7 +542,7 @@ def summarize_article_with_limit(article_text: str, max_lines: int = 30) -> str:
         Article Content:
         {{article_text}}
         
-        Summary (max {max_lines} lines):
+        Summary (max {adjusted_max_lines} lines):
         """
 
         # Check if text is too long and needs chunking
@@ -396,155 +556,23 @@ def summarize_article_with_limit(article_text: str, max_lines: int = 30) -> str:
         logger.info("📄 Article content preview (first 500 chars): %s", article_preview)
 
         if estimated_tokens > 12000:  # Leave room for prompt and completion
-            logger.info("Article too long, chunking for processing...")
-            chunks = chunk_text_for_openai(article_text, max_chunk_tokens=12000)
-            summaries = []
+            return _process_long_article(
+                chain, article_text, prompt_template, adjusted_max_lines
+            )
 
-            for i, chunk in enumerate(chunks):
-                logger.info("Processing chunk %d/%d (line-limited)", i + 1, len(chunks))
-
-                # Log what's being sent to ChatGPT for this chunk
-                chunk_preview = chunk[:300] + "..." if len(chunk) > 300 else chunk
-                logger.info(
-                    "🤖 Sending to ChatGPT chunk %d preview: %s", i + 1, chunk_preview
-                )
-
-                # Log the exact prompt being sent to ChatGPT
-                log_chatgpt_request(prompt_template, chunk, chunk_number=i + 1)
-
-                chunk_summary = chain.run(article_text=chunk)
-
-                # Log what ChatGPT returned for this chunk
-                if chunk_summary and chunk_summary.strip():
-                    logger.info(
-                        "✅ ChatGPT returned for chunk %d: %s...",
-                        i + 1,
-                        chunk_summary.strip()[:200],
-                    )
-                    summaries.append(chunk_summary.strip())
-                else:
-                    logger.warning(
-                        "❌ ChatGPT returned empty/invalid response for chunk %d", i + 1
-                    )
-
-            if not summaries:
-                return "Error: No summaries generated from chunks"
-
-            # If we have multiple chunk summaries, combine them
-            if len(summaries) > 1:
-                logger.info("Combining chunk summaries...")
-                combined_text = "\n\n".join(summaries)
-
-                # Create a special chain for combining summaries with better focus
-                try:
-                    llm = ChatOpenAI(
-                        openai_api_key=get_openai_api_key(),
-                        model_name="gpt-3.5-turbo-16k",
-                        temperature=0.3,
-                        max_tokens=min(max_lines * 20, 1000),
-                    )
-
-                    combine_prompt = f"""
-                    Please combine and synthesize the following summaries into a single, coherent summary.
-                    Focus on the main topic and primary events. The summary should be exactly {max_lines} lines or fewer.
-                    Prioritize the most important information about the main subject.
-                    
-                    Summaries to combine:
-                    {{article_text}}
-                    
-                    Final unified summary (max {max_lines} lines):
-                    """
-
-                    combine_prompt_template = PromptTemplate(
-                        input_variables=["article_text"], template=combine_prompt
-                    )
-
-                    combine_chain = LLMChain(
-                        llm=llm,
-                        prompt=combine_prompt_template,
-                        output_parser=SummaryOutputParser(),
-                    )
-
-                    # Log what's being sent to ChatGPT for final combination
-                    combine_preview = (
-                        combined_text[:500] + "..."
-                        if len(combined_text) > 500
-                        else combined_text
-                    )
-                    logger.info(
-                        "🔄 Sending combined summaries to ChatGPT for final synthesis: %s",
-                        combine_preview,
-                    )
-
-                    if estimate_tokens(combined_text) > 12000:
-                        final_summary = combine_chain.run(
-                            article_text=combined_text[: 12000 * 4]
-                        )
-                        return (
-                            final_summary,
-                            f"Combined {len(summaries)} chunks into final summary",
-                        )
-                    final_summary = combine_chain.run(article_text=combined_text)
-
-                    # Log final ChatGPT response
-                    if final_summary:
-                        logger.info(
-                            "🎯 Final ChatGPT response: %s...",
-                            final_summary.strip()[:300],
-                        )
-                    else:
-                        logger.warning("❌ Final ChatGPT response was empty")
-
-                except Exception as e:
-                    logger.warning(
-                        "Error creating specialized combine chain: %s, "
-                        "falling back to regular chain",
-                        e,
-                    )
-                    # Fallback to original method
-                    if estimate_tokens(combined_text) > 12000:
-                        final_summary = chain.run(
-                            article_text=combined_text[: 12000 * 4]
-                        )
-                    else:
-                        final_summary = chain.run(article_text=combined_text)
-
-                if not final_summary:
-                    return "Error: Final summary generation failed"
-
-                # Post-process to ensure line limit
-                lines = final_summary.strip().split("\n")
-                if len(lines) > max_lines:
-                    final_summary = "\n".join(lines[:max_lines])
-
-                return final_summary.strip()
-            # Post-process single summary to ensure line limit
-            lines = summaries[0].split("\n")
-            if len(lines) > max_lines:
-                summary = "\n".join(lines[:max_lines])
-            else:
-                summary = summaries[0]
-            return summary
         # Text is short enough, process normally
-        logger.info("Generating summary with max %d lines...", max_lines)
+        return _process_short_article(
+            chain, article_text, prompt_template, adjusted_max_lines
+        )
 
-        # Log the exact prompt being sent to ChatGPT for single processing
-        log_chatgpt_request(prompt_template, article_text)
-
-        summary = chain.run(article_text=article_text)
-
-        if not summary or len(summary.strip()) == 0:
-            return "Error: Generated summary is empty"
-
-        # Post-process to ensure line limit
-        lines = summary.strip().split("\n")
-        if len(lines) > max_lines:
-            summary = "\n".join(lines[:max_lines])
-
-        logger.info("Summary generated successfully (%d lines)", len(lines))
-        return summary.strip()
-
-    except Exception as e:
+    except (
+        ValueError,
+        KeyError,
+        AttributeError,
+        ConnectionError,
+        TimeoutError,
+        TypeError,
+    ) as e:
         logger.error("Error during line-limited summarization: %s", str(e))
         return f"Error generating summary: {str(e)}"
 
@@ -688,11 +716,11 @@ def create_intent_aware_chain(intent: str, confidence: float):
             input_variables=["article_text"], template=prompt_template
         )
 
-        chain = LLMChain(llm=llm, prompt=prompt, output_parser=SummaryOutputParser())
+        chain = LLMChain(llm=llm, prompt=prompt, output_parser=parse_summary_output)
 
         return chain
 
-    except Exception as e:
+    except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
         logger.error("Error creating intent-aware summarization chain: %s", str(e))
         return None
 
@@ -705,6 +733,36 @@ def sanitize_article_text(text: str) -> str:
     # Replace curly braces to prevent format code errors
     sanitized = str(text).replace("{", "(").replace("}", ")")
     return sanitized
+
+
+def _summarize_chunks_with_intent(
+    chunks: List[str], intent: str, confidence: float
+) -> List[str]:
+    """Summarize text chunks using intent-aware prompting."""
+    summaries = []
+    chain = create_intent_aware_chain(intent, confidence)
+
+    if not chain:
+        return summaries
+
+    for i, chunk in enumerate(chunks[:2]):  # Limit to first 2 chunks
+        try:
+            log_chatgpt_request(chain.prompt.template, chunk, i + 1)
+            safe_chunk = sanitize_article_text(chunk)
+            chunk_summary = chain.run(article_text=safe_chunk)
+            summaries.append(chunk_summary)
+            logger.info("✅ Chunk %d summarized successfully", i + 1)
+        except (
+            ConnectionError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            AttributeError,
+        ) as e:
+            logger.error("Error summarizing chunk %d: %s", i + 1, str(e))
+            continue
+
+    return summaries
 
 
 def summarize_article_with_intent(
@@ -760,35 +818,19 @@ def summarize_article_with_intent(
                         len(chunks),
                     )
 
-                    summaries = []
-                    chain = create_intent_aware_chain(intent, confidence)
-                    if chain:
-                        for i, chunk in enumerate(
-                            chunks[:2]
-                        ):  # Limit to first 2 chunks
-                            try:
-                                log_chatgpt_request(chain.prompt.template, chunk, i + 1)
-                                safe_chunk = sanitize_article_text(chunk)
-                                chunk_summary = chain.run(article_text=safe_chunk)
-                                summaries.append(chunk_summary)
-                                logger.info(
-                                    "✅ Chunk %d summarized successfully", i + 1
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    "Error summarizing chunk %d: %s", i + 1, str(e)
-                                )
-                                continue
+                    summaries = _summarize_chunks_with_intent(
+                        chunks, intent, confidence
+                    )
 
-                        if summaries:
-                            combined_summary = " ".join(summaries)
-                            return {
-                                "summary": combined_summary,
-                                "method": f"intent_aware_chunked_openai_{intent.lower()}",
-                                "intent": intent,
-                                "confidence": confidence,
-                                "chunks_processed": len(summaries),
-                            }
+                    if summaries:
+                        combined_summary = " ".join(summaries)
+                        return {
+                            "summary": combined_summary,
+                            "method": f"intent_aware_chunked_openai_{intent.lower()}",
+                            "intent": intent,
+                            "confidence": confidence,
+                            "chunks_processed": len(summaries),
+                        }
                 else:
                     # Handle normal-sized articles
                     chain = create_intent_aware_chain(intent, confidence)
@@ -806,7 +848,14 @@ def summarize_article_with_intent(
                             "confidence": confidence,
                         }
 
-            except Exception as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                ValueError,
+                KeyError,
+                AttributeError,
+                TypeError,
+            ) as e:
                 logger.error("Error in intent-aware OpenAI summarization: %s", str(e))
 
     # Fallback to regular summarization

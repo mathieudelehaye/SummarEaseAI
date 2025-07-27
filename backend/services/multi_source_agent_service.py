@@ -9,17 +9,27 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Any
 
-# Add project root to path
-repo_root = Path(__file__).resolve().parent.parent.parent
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-
+import wikipedia
 from ml_models.bert_classifier import get_classifier as get_bert_classifier
 from backend.models.llm_client import get_llm_client
 from backend.services.query_generation_service import get_query_generation_service
 from backend.services.langchain_agents_service import get_langchain_agents_service
 from backend.services.wikipedia_service import WikipediaService
 from backend.services.summarizer import summarize_article_with_intent
+
+# Common exceptions for service error handling
+COMMON_SERVICE_EXCEPTIONS = (
+    ValueError,
+    KeyError,
+    AttributeError,
+    ConnectionError,
+    TimeoutError,
+)
+
+# Add project root to path
+repo_root = Path(__file__).resolve().parent.parent.parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
 logger = logging.getLogger(__name__)
 
@@ -82,34 +92,43 @@ class MultiSourceAgentService:
     """
 
     def __init__(self, cost_mode: str = "BALANCED"):
-        # Use the same BERT model path as the API
-        self.bert_model_path = repo_root / "ml_models" / "bert_gpu_model"
-        self.bert_classifier = get_bert_classifier(str(self.bert_model_path))
-        self.bert_model_loaded = (
-            self.bert_classifier.load_model() if self.bert_classifier else False
-        )
+        # Configuration objects to reduce instance attributes
+        self.config = {
+            "bert_model_path": repo_root / "ml_models" / "bert_gpu_model",
+            "cost_mode": cost_mode.upper(),
+            "limits": RateLimitConfig.get_limits_for_mode(cost_mode.upper()),
+        }
 
-        # Initialize services
-        self.llm_client = get_llm_client()
-        self.query_generator = get_query_generation_service()
-        self.langchain_agents = get_langchain_agents_service()
-
-        # Initialize rate limiting
-        self.cost_mode = cost_mode.upper()
-        self.limits = RateLimitConfig.get_limits_for_mode(self.cost_mode)
+        # Service instances
+        self.services = {
+            "bert_classifier": get_bert_classifier(str(self.config["bert_model_path"])),
+            "llm_client": get_llm_client(),
+            "query_generator": get_query_generation_service(),
+            "langchain_agents": get_langchain_agents_service(),
+        }
 
         # Usage tracking
-        self.openai_calls_made = 0
-        self.wikipedia_calls_made = 0
-        self.articles_processed = 0
+        self.usage = {
+            "openai_calls_made": 0,
+            "wikipedia_calls_made": 0,
+            "articles_processed": 0,
+        }
+
+        # Initialize BERT model
+        self.bert_model_loaded = (
+            self.services["bert_classifier"].load_model()
+            if self.services["bert_classifier"]
+            else False
+        )
 
         logger.info(
-            "🎛️ Multi-Source Agent Service initialized in %s mode", self.cost_mode
+            "🎛️ Multi-Source Agent Service initialized in %s mode",
+            self.config["cost_mode"],
         )
         logger.info(
             "📊 Limits: %s articles, %s secondary queries",
-            self.limits["max_articles"],
-            self.limits["max_secondary_queries"],
+            self.config["limits"]["max_articles"],
+            self.config["limits"]["max_secondary_queries"],
         )
         logger.info("🚀 GPU BERT model loaded: %s", self.bert_model_loaded)
 
@@ -141,9 +160,7 @@ class MultiSourceAgentService:
         articles_data = self._search_and_gather_articles(search_queries, user_query)
 
         if not articles_data:
-            return self._create_error_response(
-                "No articles found", user_query, detected_intent
-            )
+            raise ValueError("No articles to summarize")
 
         logger.info("📚 Successfully gathered %d articles", len(articles_data))
 
@@ -158,7 +175,7 @@ class MultiSourceAgentService:
                 {
                     "user_query": user_query,
                     "detected_intent": detected_intent,
-                    "cost_mode": self.cost_mode,
+                    "cost_mode": self.config["cost_mode"],
                     "usage_stats": self._get_usage_stats(),
                     "articles_used": len(articles_data),
                     "search_queries_used": len(search_queries),
@@ -168,7 +185,7 @@ class MultiSourceAgentService:
             logger.info("✅ Multi-source summary completed successfully")
             return summary_result
 
-        except Exception as e:
+        except COMMON_SERVICE_EXCEPTIONS as e:
             logger.error("❌ Summary creation failed: %s", str(e))
             return self._create_error_response(
                 f"Summary creation failed: {str(e)}", user_query, detected_intent
@@ -181,9 +198,11 @@ class MultiSourceAgentService:
 
         if self.bert_model_loaded:
             try:
-                intent_result = self.bert_classifier.classify_text(user_query)
+                intent_result = self.services["bert_classifier"].classify_text(
+                    user_query
+                )
                 return intent_result.get("intent", "general_knowledge")
-            except Exception as e:
+            except (ValueError, AttributeError, KeyError, RuntimeError) as e:
                 logger.warning("⚠️ BERT classification failed: %s", str(e))
 
         # Fallback intent classification
@@ -214,25 +233,30 @@ class MultiSourceAgentService:
 
         # Generate secondary queries if enabled and within limits
         if (
-            self.limits["enable_openai"]
-            and self.openai_calls_made < self.limits["max_secondary_queries"]
+            self.config["limits"]["enable_openai"]
+            and self.usage["openai_calls_made"]
+            < self.config["limits"]["max_secondary_queries"]
         ):
 
             try:
-                secondary_queries = self.query_generator.generate_secondary_queries(
+                secondary_queries = self.services[
+                    "query_generator"
+                ].generate_secondary_queries(
                     user_query,
                     intent,
                     max_queries=min(
-                        2, self.limits["max_secondary_queries"] - self.openai_calls_made
+                        2,
+                        self.config["limits"]["max_secondary_queries"]
+                        - self.usage["openai_calls_made"],
                     ),
                 )
                 queries.extend(secondary_queries)
-                self.openai_calls_made += len(secondary_queries)
+                self.usage["openai_calls_made"] += len(secondary_queries)
                 logger.info(
                     "🤖 Generated %d secondary queries using OpenAI",
                     len(secondary_queries),
                 )
-            except Exception as e:
+            except COMMON_SERVICE_EXCEPTIONS as e:
                 logger.warning("⚠️ Secondary query generation failed: %s", str(e))
 
         # Remove duplicates while preserving order
@@ -241,7 +265,7 @@ class MultiSourceAgentService:
             if query not in unique_queries:
                 unique_queries.append(query)
 
-        return unique_queries[: self.limits["max_secondary_queries"] + 1]
+        return unique_queries[: self.config["limits"]["max_secondary_queries"] + 1]
 
     def _search_and_gather_articles(
         self, search_queries: List[str], original_query: str
@@ -251,25 +275,29 @@ class MultiSourceAgentService:
         seen_titles = set()
 
         for query in search_queries:
-            if self.wikipedia_calls_made >= self.limits["max_wikipedia_searches"]:
+            if (
+                self.usage["wikipedia_calls_made"]
+                >= self.config["limits"]["max_wikipedia_searches"]
+            ):
                 logger.info(
                     "⚠️ Wikipedia search limit reached (%d)",
-                    self.limits["max_wikipedia_searches"],
+                    self.config["limits"]["max_wikipedia_searches"],
                 )
                 break
 
-            if len(articles_data) >= self.limits["max_articles"]:
+            if len(articles_data) >= self.config["limits"]["max_articles"]:
                 logger.info(
-                    "📊 Article limit reached (%d)", self.limits["max_articles"]
+                    "📊 Article limit reached (%d)",
+                    self.config["limits"]["max_articles"],
                 )
                 break
 
             try:
                 # Try LangChain agents first if enabled
-                if self.limits["enable_agents"]:
-                    article_result = self.langchain_agents.intelligent_wikipedia_search(
-                        query
-                    )
+                if self.config["limits"]["enable_agents"]:
+                    article_result = self.services[
+                        "langchain_agents"
+                    ].intelligent_wikipedia_search(query)
                     if (
                         "article_info" in article_result
                         and "error" not in article_result["article_info"]
@@ -278,7 +306,7 @@ class MultiSourceAgentService:
                         if article_info["title"] not in seen_titles:
                             articles_data.append(article_info)
                             seen_titles.add(article_info["title"])
-                            self.wikipedia_calls_made += 1
+                            self.usage["wikipedia_calls_made"] += 1
                             logger.info(
                                 "🎯 LangChain agents found: '%s'", article_info["title"]
                             )
@@ -288,7 +316,7 @@ class MultiSourceAgentService:
                 # Initialize Wikipedia service
                 wikipedia_service = WikipediaService()
                 article_info = wikipedia_service.search_and_fetch_article_info(query)
-                self.wikipedia_calls_made += 1
+                self.usage["wikipedia_calls_made"] += 1
 
                 if article_info and "error" not in article_info:
                     if article_info["title"] not in seen_titles:
@@ -298,7 +326,12 @@ class MultiSourceAgentService:
                             "📚 Standard search found: '%s'", article_info["title"]
                         )
 
-            except Exception as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                ValueError,
+                wikipedia.PageError,
+            ) as e:
                 logger.warning("⚠️ Search failed for query '%s': %s", query, str(e))
                 continue
 
@@ -309,7 +342,7 @@ class MultiSourceAgentService:
     ) -> Dict[str, Any]:
         """Create a comprehensive summary from multiple articles"""
         if not articles_data:
-            raise Exception("No articles to summarize")
+            raise ValueError("No articles to summarize")
 
         # Prepare article summaries
         article_summaries = []
@@ -340,9 +373,9 @@ class MultiSourceAgentService:
                     }
                 )
 
-                self.articles_processed += 1
+                self.usage["articles_processed"] += 1
 
-            except Exception as e:
+            except COMMON_SERVICE_EXCEPTIONS as e:
                 logger.warning(
                     "⚠️ Failed to summarize article '%s': %s",
                     article.get("title", "Unknown"),
@@ -351,7 +384,7 @@ class MultiSourceAgentService:
                 continue
 
         if not article_summaries:
-            raise Exception("Failed to summarize any articles")
+            raise RuntimeError("Failed to summarize any articles")
 
         # Create synthesis
         synthesis = self._synthesize_multi_source_content(
@@ -405,46 +438,58 @@ class MultiSourceAgentService:
             "error": error_message,
             "user_query": user_query,
             "detected_intent": intent,
-            "cost_mode": self.cost_mode,
+            "cost_mode": self.config["cost_mode"],
             "usage_stats": self._get_usage_stats(),
             "method": "multi_source_agent_error",
         }
 
     def _reset_usage_tracking(self):
         """Reset usage tracking for new request"""
-        self.openai_calls_made = 0
-        self.wikipedia_calls_made = 0
-        self.articles_processed = 0
+        self.usage["openai_calls_made"] = 0
+        self.usage["wikipedia_calls_made"] = 0
+        self.usage["articles_processed"] = 0
 
     def _get_usage_stats(self) -> Dict[str, int]:
         """Get current usage statistics"""
         return {
-            "openai_calls_made": self.openai_calls_made,
-            "wikipedia_calls_made": self.wikipedia_calls_made,
-            "articles_processed": self.articles_processed,
+            "openai_calls_made": self.usage["openai_calls_made"],
+            "wikipedia_calls_made": self.usage["wikipedia_calls_made"],
+            "articles_processed": self.usage["articles_processed"],
             "openai_calls_remaining": max(
-                0, self.limits["max_secondary_queries"] - self.openai_calls_made
+                0,
+                self.config["limits"]["max_secondary_queries"]
+                - self.usage["openai_calls_made"],
             ),
             "wikipedia_calls_remaining": max(
-                0, self.limits["max_wikipedia_searches"] - self.wikipedia_calls_made
+                0,
+                self.config["limits"]["max_wikipedia_searches"]
+                - self.usage["wikipedia_calls_made"],
             ),
         }
 
     def set_cost_mode(self, mode: str):
         """Change cost control mode"""
-        self.cost_mode = mode.upper()
-        self.limits = RateLimitConfig.get_limits_for_mode(self.cost_mode)
-        logger.info("🎛️ Cost mode changed to %s", self.cost_mode)
-        logger.info("📊 New limits: %s", self.limits)
+        self.config["cost_mode"] = mode.upper()
+        self.config["limits"] = RateLimitConfig.get_limits_for_mode(
+            self.config["cost_mode"]
+        )
+        logger.info("🎛️ Cost mode changed to %s", self.config["cost_mode"])
+        logger.info("📊 New limits: %s", self.config["limits"])
 
 
-# Global service instance
-_MULTI_SOURCE_AGENT_SERVICE = None
+class _MultiSourceAgentServiceSingleton:
+    """Singleton wrapper for MultiSourceAgentService"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> MultiSourceAgentService:
+        """Get or create the singleton service instance"""
+        if cls._instance is None:
+            cls._instance = MultiSourceAgentService()
+        return cls._instance
 
 
 def get_multi_source_agent_service() -> MultiSourceAgentService:
     """Get or create global multi-source agent service instance"""
-    global _MULTI_SOURCE_AGENT_SERVICE
-    if _MULTI_SOURCE_AGENT_SERVICE is None:
-        _MULTI_SOURCE_AGENT_SERVICE = MultiSourceAgentService()
-    return _MULTI_SOURCE_AGENT_SERVICE
+    return _MultiSourceAgentServiceSingleton.get_instance()

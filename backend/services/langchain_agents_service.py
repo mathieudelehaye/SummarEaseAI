@@ -4,32 +4,36 @@ Moved from utils/langchain_agents.py to proper services layer
 Specialized LangChain agent orchestration
 """
 
+from typing import List, Dict, Any
 import logging
 import sys
 from pathlib import Path
-from typing import List, Dict, Any
 
 import wikipedia
+from models.llm_client import get_llm_client
 
-# Add project root to path
+# Setup agent service environment
 repo_root = Path(__file__).resolve().parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 logger = logging.getLogger(__name__)
 
-# Check if LangChain is available
+# Initialize LangChain agent components
 try:
     from langchain.agents import AgentType, initialize_agent, Tool
-    from langchain.chat_models import ChatOpenAI
     from langchain.memory import ConversationBufferMemory
 
     LANGCHAIN_AVAILABLE = True
+    logger.info("LangChain agents available for orchestration")
 except ImportError:
     LANGCHAIN_AVAILABLE = False
     logger.warning("⚠️ LangChain not available - agents will be disabled")
-
-from models.llm_client import get_llm_client
+    # Define dummy classes to avoid name errors
+    AgentType = None
+    initialize_agent = None
+    Tool = None
+    ConversationBufferMemory = None
 
 
 class WikipediaSearchTool:
@@ -50,7 +54,12 @@ class WikipediaSearchTool:
                 result_summary += f"{i}. {title}\n"
 
             return result_summary
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+        ) as e:
             return f"Wikipedia search error: {str(e)}"
 
     @staticmethod
@@ -64,7 +73,7 @@ class WikipediaSearchTool:
             return f"Article: {page.title}\nURL: {page.url}\nSummary: {summary}"
         except wikipedia.exceptions.DisambiguationError as e:
             return f"Disambiguation page. Options: {e.options[:3]}"
-        except Exception as e:
+        except (wikipedia.PageError, ConnectionError, ValueError, KeyError) as e:
             return f"Error getting article preview: {str(e)}"
 
 
@@ -84,7 +93,7 @@ class LangChainAgentsService:
                 self.query_enhancement_agent = QueryEnhancementAgent()
                 self.article_selection_agent = ArticleSelectionAgent()
                 logger.info("✅ LangChain Agents Service initialized successfully")
-            except Exception as e:
+            except (ImportError, ValueError, AttributeError, OSError) as e:
                 logger.error("❌ Failed to initialize LangChain agents: %s", str(e))
         else:
             logger.warning(
@@ -155,7 +164,13 @@ class LangChainAgentsService:
                 "agents_used": ["QueryEnhancementAgent", "ArticleSelectionAgent"],
             }
 
-        except Exception as e:
+        except (
+            ValueError,
+            KeyError,
+            AttributeError,
+            ImportError,
+            ConnectionError,
+        ) as e:
             logger.error("❌ LangChain agent search failed: %s", str(e))
             return self._fallback_search(user_query, max_options)
 
@@ -172,7 +187,7 @@ class LangChainAgentsService:
                     "📝 Disambiguation page, selecting first option: %s", e.options[0]
                 )
                 selected_page = wikipedia.page(e.options[0], auto_suggest=False)
-            except (wikipedia.exceptions.PageError, Exception):
+            except (wikipedia.exceptions.PageError, ConnectionError, ValueError):
                 logger.info(
                     "⚠️ Exact match failed, trying with auto-suggest for: '%s'",
                     selected_title,
@@ -186,7 +201,12 @@ class LangChainAgentsService:
                 "summary": selected_page.summary,
             }
 
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+        ) as e:
             logger.error("❌ Failed to get selected article: %s", str(e))
             # Try fallback to first search result
             if search_results:
@@ -204,7 +224,11 @@ class LangChainAgentsService:
                         "content": fallback_page.content,
                         "summary": fallback_page.summary,
                     }
-                except Exception as fallback_error:
+                except (
+                    wikipedia.PageError,
+                    wikipedia.DisambiguationError,
+                    ConnectionError,
+                ) as fallback_error:
                     logger.error("❌ Fallback also failed: %s", str(fallback_error))
 
             return {"error": f"Failed to get article: {str(e)}"}
@@ -229,7 +253,12 @@ class LangChainAgentsService:
                 "total_articles_considered": len(search_results),
             }
 
-        except Exception as e:
+        except (
+            wikipedia.PageError,
+            wikipedia.DisambiguationError,
+            ConnectionError,
+            ValueError,
+        ) as e:
             logger.error("❌ Fallback search failed: %s", str(e))
             return {"error": f"Search failed: {str(e)}"}
 
@@ -239,9 +268,9 @@ class QueryEnhancementAgent:
 
     def __init__(self):
         if not LANGCHAIN_AVAILABLE:
-            raise Exception("LangChain not available")
+            raise ImportError("LangChain not available")
 
-        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.2)
+        self.llm = get_llm_client().get_llm_client()
         self._initialize_agent()
 
     def _initialize_agent(self):
@@ -286,7 +315,13 @@ class QueryEnhancementAgent:
                 "confidence": 0.9,
             }
 
-        except Exception as e:
+        except (
+            ValueError,
+            KeyError,
+            AttributeError,
+            ImportError,
+            ConnectionError,
+        ) as e:
             logger.error("Query enhancement failed: %s", str(e))
             return self._fallback_enhancement(original_query)
 
@@ -327,9 +362,9 @@ class ArticleSelectionAgent:
 
     def __init__(self):
         if not LANGCHAIN_AVAILABLE:
-            raise Exception("LangChain not available")
+            raise ImportError("LangChain not available")
 
-        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.1)
+        self.llm = get_llm_client().get_llm_client()
         self._initialize_agent()
 
     def _initialize_agent(self):
@@ -382,7 +417,13 @@ class ArticleSelectionAgent:
                 "confidence": 0.9,
             }
 
-        except Exception as e:
+        except (
+            ValueError,
+            KeyError,
+            AttributeError,
+            ImportError,
+            ConnectionError,
+        ) as e:
             logger.error("Article selection failed: %s", str(e))
             return {
                 "selected_article": article_options[0],
@@ -401,13 +442,19 @@ class ArticleSelectionAgent:
         return options[0] if options else ""
 
 
-# Global service instance
-_LANGCHAIN_AGENTS_SERVICE = None
+class _LangChainAgentsServiceSingleton:
+    """Singleton wrapper for LangChainAgentsService"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> LangChainAgentsService:
+        """Get or create the singleton service instance"""
+        if cls._instance is None:
+            cls._instance = LangChainAgentsService()
+        return cls._instance
 
 
 def get_langchain_agents_service() -> LangChainAgentsService:
     """Get or create global LangChain agents service instance"""
-    global _LANGCHAIN_AGENTS_SERVICE
-    if _LANGCHAIN_AGENTS_SERVICE is None:
-        _LANGCHAIN_AGENTS_SERVICE = LangChainAgentsService()
-    return _LANGCHAIN_AGENTS_SERVICE
+    return _LangChainAgentsServiceSingleton.get_instance()

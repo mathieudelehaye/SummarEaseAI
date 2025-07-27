@@ -10,9 +10,42 @@ import sys
 import logging
 import warnings
 from pathlib import Path
+from typing import Dict, Any
 
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
+from backend.services.summarization_service import get_summarization_service
+
+
+def format_summarization_response(result, cost_mode, articles=None):
+    """Format a standardized summarization response"""
+    response = {
+        "query": result["query"],
+        "summary": result["summary"],
+        "metadata": {
+            "intent": result.get("intent"),
+            "confidence": result.get("confidence"),
+            "method": result.get("method"),
+            "total_sources": result.get("total_sources", 0),
+            "summary_length": result.get("summary_length", 0),
+            "summary_lines": result.get("summary_lines", 0),
+            "agent_powered": result.get("agent_powered", False),
+            "cost_mode": cost_mode,
+        },
+    }
+
+    if articles:
+        response["articles"] = [
+            {
+                "title": article["title"],
+                "url": article["url"],
+                "selection_method": article.get("selection_method", "unknown"),
+            }
+            for article in articles
+        ]
+
+    return response
+
 
 # Configure logging before any other imports
 logging.basicConfig(
@@ -34,15 +67,12 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
     logger.info("Added %s to Python path", repo_root)
 
-# Service imports - all business logic comes from here
-from backend.services.summarization_service import get_summarization_service
-
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Initialize service
-summarization_service = get_summarization_service()
+# Initialize service with proper constant naming
+SUMMARIZATION_SERVICE = get_summarization_service()
 
 # BERT categories for display
 BERT_CATEGORIES = ["History", "Music", "Science", "Sports", "Technology", "Finance"]
@@ -124,11 +154,30 @@ HTML_TEMPLATE = """
 """
 
 
+def _validate_summarize_request(
+    data: Dict[str, Any],
+) -> tuple[Dict[str, Any], int] | None:
+    """Validate single-source summarization request.
+    Returns error response if invalid, None if valid."""
+    if not data or "query" not in data:
+        return {"error": "Missing query parameter"}, 400
+
+    query = data["query"].strip()
+    max_lines = data.get("max_lines", 30)
+
+    if not query:
+        return {"error": "Empty query provided"}, 400
+    if max_lines < 5 or max_lines > 100:
+        return {"error": "max_lines must be between 5 and 100"}, 400
+
+    return None
+
+
 @app.route("/")
 def home():
     """Main page showing backend status and available endpoints"""
     # Get status from service
-    system_status = summarization_service.get_system_status()
+    system_status = SUMMARIZATION_SERVICE.get_system_status()
     bert_model_loaded = system_status["models"]["bert"]["loaded"]
 
     return render_template_string(
@@ -142,13 +191,13 @@ def home():
 @app.route("/status")
 def status():
     """System status endpoint - delegates to service"""
-    return jsonify(summarization_service.get_system_status())
+    return jsonify(SUMMARIZATION_SERVICE.get_system_status())
 
 
 @app.route("/health")
 def health():
     """Health check endpoint - delegates to service"""
-    return jsonify(summarization_service.get_health_status())
+    return jsonify(SUMMARIZATION_SERVICE.get_health_status())
 
 
 @app.route("/intent_bert", methods=["POST"])
@@ -165,7 +214,7 @@ def intent_bert():
             return jsonify({"error": "Empty text provided"}), 400
 
         # Delegate to service
-        result = summarization_service.classify_intent(text)
+        result = SUMMARIZATION_SERVICE.classify_intent(text)
 
         # Handle service errors
         if "error" in result:
@@ -176,7 +225,7 @@ def intent_bert():
         # Return successful result
         return jsonify(result)
 
-    except Exception as e:
+    except (ValueError, KeyError, AttributeError, TypeError) as e:
         logger.error("Error in intent_bert endpoint: %s", str(e))
         return jsonify({"error": "Internal server error"}), 500
 
@@ -187,20 +236,15 @@ def summarize():
     try:
         # Extract and validate input
         data = request.json
-        if not data or "query" not in data:
-            return jsonify({"error": "Missing query parameter"}), 400
+        validation_error = _validate_summarize_request(data)
+        if validation_error:
+            return jsonify(validation_error[0]), validation_error[1]
 
         query = data["query"].strip()
         max_lines = data.get("max_lines", 30)
 
-        if not query:
-            return jsonify({"error": "Empty query provided"}), 400
-
-        if max_lines < 5 or max_lines > 100:
-            return jsonify({"error": "max_lines must be between 5 and 100"}), 400
-
         # Delegate to service
-        result = summarization_service.summarize_single_source(query, max_lines)
+        result = SUMMARIZATION_SERVICE.summarize_single_source(query, max_lines)
 
         # Handle service errors
         if "error" in result:
@@ -211,9 +255,34 @@ def summarize():
         # Return successful result
         return jsonify(result)
 
-    except Exception as e:
+    except (ValueError, KeyError, AttributeError, TypeError, ConnectionError) as e:
         logger.error("Error in summarize endpoint: %s", str(e))
         return jsonify({"error": "Internal server error"}), 500
+
+
+def _validate_multi_source_request(
+    data: Dict[str, Any],
+) -> tuple[Dict[str, Any], int] | None:
+    """Validate multi-source summarization request.
+    Returns error response if invalid, None if valid."""
+    if not data or "query" not in data:
+        return {"error": "Missing query parameter"}, 400
+
+    query = data["query"].strip()
+    max_lines = data.get("max_lines", 30)
+    max_articles = data.get("max_articles", 3)
+    cost_mode = data.get("cost_mode", "BALANCED")
+
+    if not query:
+        return {"error": "Empty query provided"}, 400
+    if max_lines < 5 or max_lines > 100:
+        return {"error": "max_lines must be between 5 and 100"}, 400
+    if max_articles < 1 or max_articles > 10:
+        return {"error": "max_articles must be between 1 and 10"}, 400
+    if cost_mode not in ["MINIMAL", "BALANCED", "COMPREHENSIVE"]:
+        return {"error": "cost_mode must be MINIMAL, BALANCED, or COMPREHENSIVE"}, 400
+
+    return None
 
 
 @app.route("/summarize_multi_source", methods=["POST"])
@@ -222,33 +291,17 @@ def summarize_multi_source():
     try:
         # Extract and validate input
         data = request.json
-        if not data or "query" not in data:
-            return jsonify({"error": "Missing query parameter"}), 400
+        validation_error = _validate_multi_source_request(data)
+        if validation_error:
+            return jsonify(validation_error[0]), validation_error[1]
 
         query = data["query"].strip()
         max_lines = data.get("max_lines", 30)
         max_articles = data.get("max_articles", 3)
         cost_mode = data.get("cost_mode", "BALANCED")
 
-        if not query:
-            return jsonify({"error": "Empty query provided"}), 400
-
-        if max_lines < 5 or max_lines > 100:
-            return jsonify({"error": "max_lines must be between 5 and 100"}), 400
-
-        if max_articles < 1 or max_articles > 10:
-            return jsonify({"error": "max_articles must be between 1 and 10"}), 400
-
-        if cost_mode not in ["MINIMAL", "BALANCED", "COMPREHENSIVE"]:
-            return (
-                jsonify(
-                    {"error": "cost_mode must be MINIMAL, BALANCED, or COMPREHENSIVE"}
-                ),
-                400,
-            )
-
         # Delegate to service
-        result = summarization_service.summarize_multi_source_with_agents(
+        result = SUMMARIZATION_SERVICE.summarize_multi_source_with_agents(
             query=query,
             max_articles=max_articles,
             max_lines=max_lines,
@@ -261,31 +314,14 @@ def summarize_multi_source():
                 return jsonify(result), 404
             return jsonify(result), 500
 
-        # Format successful response for HTTP
-        response = {
-            "query": result["query"],
-            "summary": result["summary"],
-            "metadata": {
-                "intent": result.get("intent"),
-                "confidence": result.get("confidence"),
-                "method": result.get("method"),
-                "total_sources": result.get("total_sources", 0),
-                "summary_length": result.get("summary_length", 0),
-                "summary_lines": result.get("summary_lines", 0),
-                "agent_powered": result.get("agent_powered", False),
-                "cost_mode": cost_mode,
-            },
-            "articles": [
-                {
-                    "title": article["title"],
-                    "url": article["url"],
-                    "selection_method": article.get("selection_method", "unknown"),
-                    "relevance_score": article.get("relevance_score"),
-                }
-                for article in result.get("articles", [])
-            ],
-            "usage_stats": result.get("usage_stats", {}),
-        }
+        # Format successful response for HTTP using shared utility
+        response = format_summarization_response(
+            result, cost_mode, result.get("articles", [])
+        )
+
+        # Add HTTP-specific fields
+        response["usage_stats"] = result.get("usage_stats", {})
+        response["cost_tracking"] = result.get("cost_tracking", {})
 
         logger.info(
             "✅ Multi-source summarization completed successfully for query: '%s'",
@@ -293,7 +329,7 @@ def summarize_multi_source():
         )
         return jsonify(response), 200
 
-    except Exception as e:
+    except (ValueError, KeyError, AttributeError, TypeError, ConnectionError) as e:
         logger.error("❌ Error in summarize_multi_source endpoint: %s", str(e))
         return jsonify({"error": "Internal server error"}), 500
 

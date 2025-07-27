@@ -11,6 +11,15 @@ from typing import Dict, Any
 import wikipedia
 from dotenv import load_dotenv
 
+# Import BERT classifier at module level to avoid import-outside-toplevel
+try:
+    from ml_models.bert_classifier import get_classifier as get_bert_classifier
+
+    BERT_AVAILABLE = True
+except ImportError:
+    BERT_AVAILABLE = False
+    get_bert_classifier = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +54,11 @@ class SummarizationService:
     def _init_bert_classifier(self):
         """Initialize BERT classifier if available"""
         try:
-            from ml_models.bert_classifier import get_classifier as get_bert_classifier
+            if not BERT_AVAILABLE:
+                logger.warning("BERT classifier not available")
+                self.bert_classifier = None
+                self.bert_model_loaded = False
+                return
 
             model_path = self.repo_root / "ml_models" / "bert_gpu_model"
             logger.info("Loading BERT model from: %s", model_path)
@@ -83,15 +96,17 @@ class SummarizationService:
 
         try:
             prediction = self.bert_classifier.predict(text)
-            if isinstance(prediction, dict):
+            if isinstance(prediction, tuple) and len(prediction) == 2:
+                predicted_intent, confidence = prediction
                 return {
                     "text": text,
-                    "predicted_category": prediction["predicted_class"],
-                    "confidence": prediction["confidence"],
-                    "all_scores": prediction["class_probabilities"],
+                    "predicted_category": predicted_intent,
+                    "confidence": confidence,
+                    # BERT classifier doesn't return all scores in current implementation
+                    "all_scores": {},
                 }
             return {"error": "Invalid prediction format"}
-        except Exception as e:
+        except (KeyError, ValueError, AttributeError) as e:
             logger.error("Error in BERT prediction: %s", e)
             return {
                 "error": str(e),
@@ -139,14 +154,14 @@ class SummarizationService:
                     "url": page.url,
                     "status": "success",
                 }
-            except Exception as inner_e:
+            except (wikipedia.PageError, KeyError, ValueError) as inner_e:
                 logger.error("Error handling disambiguation: %s", inner_e)
                 return {
                     "error": f"Disambiguation error: {str(inner_e)}",
                     "query": query,
                     "summary": None,
                 }
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
             logger.error("Error in Wikipedia search: %s", e)
             return {"error": str(e), "query": query, "summary": None}
 
@@ -180,7 +195,7 @@ class SummarizationService:
 
             return result
 
-        except Exception as e:
+        except (ValueError, KeyError, wikipedia.PageError, ConnectionError) as e:
             logger.error("Error in single source summarization: %s", e)
             return {
                 "error": str(e),
@@ -201,7 +216,7 @@ class SummarizationService:
             result["method"] = "single_source_placeholder"
             return result
 
-        except Exception as e:
+        except (ValueError, KeyError, wikipedia.PageError, ConnectionError) as e:
             logger.error("Error in multi-source summarization: %s", e)
             return {"error": str(e), "query": query, "summary": None}
 
@@ -248,13 +263,19 @@ class SummarizationService:
         )
 
 
-# Global service instance
-_SUMMARIZATION_SERVICE = None
+class _SummarizationServiceSingleton:
+    """Singleton wrapper for SummarizationService"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> SummarizationService:
+        """Get or create the singleton service instance"""
+        if cls._instance is None:
+            cls._instance = SummarizationService()
+        return cls._instance
 
 
 def get_summarization_service() -> SummarizationService:
     """Get or create the global summarization service instance"""
-    global _SUMMARIZATION_SERVICE
-    if _SUMMARIZATION_SERVICE is None:
-        _SUMMARIZATION_SERVICE = SummarizationService()
-    return _SUMMARIZATION_SERVICE
+    return _SummarizationServiceSingleton.get_instance()

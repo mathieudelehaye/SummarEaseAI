@@ -1,13 +1,46 @@
 """
-Summarization controller - HTTP request/response handling
-No business logic - just web layer coordination
+Summarization Controller - Business Logic Layer
+Handles summarization requests and coordinates with services
 """
 
 import logging
 from typing import Dict, Any
-from services.summarization_service import get_summarization_service
+
+from backend.services.summarization_service import get_summarization_service
 
 logger = logging.getLogger(__name__)
+
+
+def format_summarization_response(
+    result: Dict[str, Any], cost_mode: str, articles=None
+):
+    """Format a standardized summarization response"""
+    response = {
+        "query": result["query"],
+        "summary": result["summary"],
+        "metadata": {
+            "intent": result.get("intent"),
+            "confidence": result.get("confidence"),
+            "method": result.get("method"),
+            "total_sources": result.get("total_sources", 0),
+            "summary_length": result.get("summary_length", 0),
+            "summary_lines": result.get("summary_lines", 0),
+            "agent_powered": result.get("agent_powered", False),
+            "cost_mode": cost_mode,
+        },
+    }
+
+    if articles:
+        response["articles"] = [
+            {
+                "title": article["title"],
+                "url": article["url"],
+                "selection_method": article.get("selection_method", "unknown"),
+            }
+            for article in articles
+        ]
+
+    return response
 
 
 class SummarizationController:
@@ -19,6 +52,28 @@ class SummarizationController:
     def __init__(self):
         self.summarization_service = get_summarization_service()
 
+    def _validate_multi_source_request(
+        self, request_data: Dict[str, Any]
+    ) -> tuple[Dict[str, Any], int] | None:
+        """Validate multi-source request parameters.
+        Returns error tuple if invalid, None if valid."""
+        query = request_data.get("query", "").strip()
+        max_lines = request_data.get("max_lines", 30)
+        max_articles = request_data.get("max_articles", 3)
+        cost_mode = request_data.get("cost_mode", "BALANCED")
+
+        if not query:
+            return {"error": "Missing query parameter"}, 400
+        if max_lines < 5 or max_lines > 100:
+            return {"error": "max_lines must be between 5 and 100"}, 400
+        if max_articles < 1 or max_articles > 10:
+            return {"error": "max_articles must be between 1 and 10"}, 400
+        if cost_mode not in ["MINIMAL", "BALANCED", "COMPREHENSIVE"]:
+            return {
+                "error": "cost_mode must be MINIMAL, BALANCED, or COMPREHENSIVE"
+            }, 400
+        return None
+
     def handle_multi_source_request(
         self, request_data: Dict[str, Any]
     ) -> tuple[Dict[str, Any], int]:
@@ -26,26 +81,16 @@ class SummarizationController:
         Handle /summarize_multi_source endpoint
         Pure HTTP concerns - validates input and calls service
         """
-        # Extract and validate input
+        # Input validation
+        validation_error = self._validate_multi_source_request(request_data)
+        if validation_error:
+            return validation_error
+
+        # Extract validated input
         query = request_data.get("query", "").strip()
         max_lines = request_data.get("max_lines", 30)
         max_articles = request_data.get("max_articles", 3)
         cost_mode = request_data.get("cost_mode", "BALANCED")
-
-        # Input validation
-        if not query:
-            return {"error": "Missing query parameter"}, 400
-
-        if max_lines < 5 or max_lines > 100:
-            return {"error": "max_lines must be between 5 and 100"}, 400
-
-        if max_articles < 1 or max_articles > 10:
-            return {"error": "max_articles must be between 1 and 10"}, 400
-
-        if cost_mode not in ["MINIMAL", "BALANCED", "COMPREHENSIVE"]:
-            return {
-                "error": "cost_mode must be MINIMAL, BALANCED, or COMPREHENSIVE"
-            }, 400
 
         logger.info(
             "📝 Multi-source summarization request: '%s' (max_lines: %s, max_articles: %s)",
@@ -66,34 +111,15 @@ class SummarizationController:
             if "error" in result:
                 return result, 500
 
-            # Format successful response
-            response = {
-                "query": result["query"],
-                "summary": result["summary"],
-                "metadata": {
-                    "intent": result.get("intent"),
-                    "confidence": result.get("confidence"),
-                    "method": result.get("method"),
-                    "total_sources": result.get("total_sources", 0),
-                    "summary_length": result.get("summary_length", 0),
-                    "summary_lines": result.get("summary_lines", 0),
-                    "agent_powered": result.get("agent_powered", False),
-                    "cost_mode": cost_mode,
-                },
-                "articles": [
-                    {
-                        "title": article["title"],
-                        "url": article["url"],
-                        "selection_method": article.get("selection_method", "unknown"),
-                    }
-                    for article in result.get("articles", [])
-                ],
-            }
+            # Format successful response using shared utility
+            response = format_summarization_response(
+                result, cost_mode, result.get("articles", [])
+            )
 
             logger.info("✅ Multi-source summarization completed successfully")
             return response, 200
 
-        except Exception as e:
+        except (ValueError, KeyError, ConnectionError, TimeoutError) as e:
             logger.error("❌ Multi-source summarization failed: %s", str(e))
             return {"error": "Internal server error", "details": str(e)}, 500
 
@@ -149,18 +175,24 @@ class SummarizationController:
             logger.info("✅ Single-source summarization completed successfully")
             return response, 200
 
-        except Exception as e:
+        except (ValueError, KeyError, ConnectionError, TimeoutError) as e:
             logger.error("❌ Single-source summarization failed: %s", str(e))
             return {"error": "Internal server error", "details": str(e)}, 500
 
 
-# Global controller instance for reuse
-_SUMMARIZATION_CONTROLLER = None
+class _SummarizationControllerSingleton:
+    """Singleton wrapper for SummarizationController"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> SummarizationController:
+        """Get or create the singleton controller instance"""
+        if cls._instance is None:
+            cls._instance = SummarizationController()
+        return cls._instance
 
 
 def get_summarization_controller() -> SummarizationController:
     """Get or create global summarization controller instance"""
-    global _SUMMARIZATION_CONTROLLER
-    if _SUMMARIZATION_CONTROLLER is None:
-        _SUMMARIZATION_CONTROLLER = SummarizationController()
-    return _SUMMARIZATION_CONTROLLER
+    return _SummarizationControllerSingleton.get_instance()

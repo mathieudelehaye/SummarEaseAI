@@ -8,7 +8,7 @@ and Pegasus for different summarization tasks.
 
 import logging
 import warnings
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 import torch
 from transformers import pipeline
@@ -86,7 +86,7 @@ class HuggingFaceSummarizer:
             logger.info("Model loaded successfully on %s", self.device)
             return True
 
-        except Exception as e:
+        except (OSError, ImportError, RuntimeError, ValueError) as e:
             logger.error("Error loading model %s: %s", self.model_name, str(e))
             return False
 
@@ -118,6 +118,56 @@ class HuggingFaceSummarizer:
 
         return chunks
 
+    def _get_summarization_config(
+        self,
+        max_length: Optional[int],
+        min_length: Optional[int],
+        num_beams: int,
+        do_sample: bool,
+    ) -> Dict[str, Any]:
+        """Get summarization configuration with defaults applied."""
+        config = self.model_configs.get(
+            self.model_name, self.model_configs["facebook/bart-large-cnn"]
+        )
+
+        return {
+            "max_length": max_length or config["max_output_length"],
+            "min_length": min_length or config["min_output_length"],
+            "max_input_length": config["max_input_length"],
+            "num_beams": num_beams,
+            "do_sample": do_sample,
+        }
+
+    def _summarize_chunks(self, chunks: List[str], config: Dict[str, Any]) -> str:
+        """Summarize text chunks and combine results."""
+        summaries = []
+
+        for i, chunk in enumerate(chunks):
+            logger.info("Processing chunk %d/%d", i + 1, len(chunks))
+            chunk_summary = self.summarizer(
+                chunk,
+                max_length=config["max_length"] // len(chunks) + 50,
+                min_length=config["min_length"] // len(chunks),
+                num_beams=config["num_beams"],
+                do_sample=config["do_sample"],
+                truncation=True,
+            )[0]["summary_text"]
+            summaries.append(chunk_summary)
+
+        # Combine and re-summarize if needed
+        combined_summary = " ".join(summaries)
+        if len(combined_summary) > config["max_length"] * 2:
+            final_summary = self.summarizer(
+                combined_summary,
+                max_length=config["max_length"],
+                min_length=config["min_length"],
+                num_beams=config["num_beams"],
+                do_sample=config["do_sample"],
+                truncation=True,
+            )[0]["summary_text"]
+            return final_summary
+        return combined_summary
+
     def summarize_text(
         self,
         text: str,
@@ -144,60 +194,28 @@ class HuggingFaceSummarizer:
                 return "Error: Could not load summarization model"
 
         try:
-            config = self.model_configs.get(
-                self.model_name, self.model_configs["facebook/bart-large-cnn"]
+            config = self._get_summarization_config(
+                max_length, min_length, num_beams, do_sample
             )
-
-            # Set default lengths if not provided
-            if max_length is None:
-                max_length = config["max_output_length"]
-            if min_length is None:
-                min_length = config["min_output_length"]
 
             # Handle long texts by chunking
             if len(text) > config["max_input_length"]:
                 logger.info("Text too long, chunking for processing...")
                 chunks = self.chunk_text(text, config["max_input_length"])
-                summaries = []
-
-                for i, chunk in enumerate(chunks):
-                    logger.info("Processing chunk %d/%d", i + 1, len(chunks))
-                    chunk_summary = self.summarizer(
-                        chunk,
-                        max_length=max_length // len(chunks) + 50,
-                        min_length=min_length // len(chunks),
-                        num_beams=num_beams,
-                        do_sample=do_sample,
-                        truncation=True,
-                    )[0]["summary_text"]
-                    summaries.append(chunk_summary)
-
-                # Combine and re-summarize if needed
-                combined_summary = " ".join(summaries)
-                if len(combined_summary) > max_length * 2:
-                    final_summary = self.summarizer(
-                        combined_summary,
-                        max_length=max_length,
-                        min_length=min_length,
-                        num_beams=num_beams,
-                        do_sample=do_sample,
-                        truncation=True,
-                    )[0]["summary_text"]
-                    return final_summary
-                return combined_summary
+                return self._summarize_chunks(chunks, config)
 
             # Process normally for shorter texts
             result = self.summarizer(
                 text,
-                max_length=max_length,
-                min_length=min_length,
-                num_beams=num_beams,
-                do_sample=do_sample,
+                max_length=config["max_length"],
+                min_length=config["min_length"],
+                num_beams=config["num_beams"],
+                do_sample=config["do_sample"],
                 truncation=True,
             )
             return result[0]["summary_text"]
 
-        except Exception as e:
+        except (RuntimeError, ValueError, OSError, KeyError) as e:
             logger.error("Error during summarization: %s", str(e))
             return f"Error generating summary: {str(e)}"
 
@@ -252,20 +270,26 @@ class HuggingFaceSummarizer:
         }
 
 
-# Global instance
-_GLOBAL_SUMMARIZER = None
+class _HFSummarizerSingleton:
+    """Singleton wrapper for HuggingFaceSummarizer"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(
+        cls, model_name: str = "facebook/bart-large-cnn"
+    ) -> HuggingFaceSummarizer:
+        """Get or create the singleton summarizer instance"""
+        if cls._instance is None or cls._instance.model_name != model_name:
+            cls._instance = HuggingFaceSummarizer(model_name)
+        return cls._instance
 
 
 def get_hf_summarizer(
     model_name: str = "facebook/bart-large-cnn",
 ) -> HuggingFaceSummarizer:
     """Get or create global HuggingFace summarizer instance"""
-    global _GLOBAL_SUMMARIZER
-
-    if _GLOBAL_SUMMARIZER is None or _GLOBAL_SUMMARIZER.model_name != model_name:
-        _GLOBAL_SUMMARIZER = HuggingFaceSummarizer(model_name)
-
-    return _GLOBAL_SUMMARIZER
+    return _HFSummarizerSingleton.get_instance(model_name)
 
 
 def summarize_with_huggingface(

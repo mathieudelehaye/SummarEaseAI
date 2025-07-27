@@ -9,23 +9,36 @@ import sys
 from pathlib import Path
 from typing import List, Dict
 
-# Add project root to path
+from backend.models.llm_client import get_llm_client
+
+# Common exceptions for service error handling
+COMMON_SERVICE_EXCEPTIONS = (
+    ValueError,
+    KeyError,
+    AttributeError,
+    ConnectionError,
+    TimeoutError,
+)
+
+# Initialize service environment
 repo_root = Path(__file__).resolve().parent.parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 logger = logging.getLogger(__name__)
 
-# Check if LangChain is available
+# Check ChatOpenAI availability for query generation
 try:
     from langchain.chat_models import ChatOpenAI
 
     LANGCHAIN_AVAILABLE = True
+    logger.info("LangChain ChatOpenAI available for query generation")
 except ImportError:
     LANGCHAIN_AVAILABLE = False
-    logger.warning("⚠️ LangChain not available - query generation will be limited")
-
-from backend.models.llm_client import get_llm_client
+    ChatOpenAI = None
+    logger.warning(
+        "LangChain ChatOpenAI not available - using fallback query generation"
+    )
 
 
 class OpenAIQueryGenerationService:
@@ -48,7 +61,7 @@ class OpenAIQueryGenerationService:
                 logger.info(
                     "✅ OpenAI Query Generation Service initialized successfully"
                 )
-            except Exception as e:
+            except (ImportError, ValueError, AttributeError, OSError) as e:
                 logger.error(
                     "❌ Failed to initialize OpenAI query generation: %s", str(e)
                 )
@@ -140,7 +153,7 @@ class OpenAIQueryGenerationService:
             except json.JSONDecodeError:
                 logger.warning("Failed to parse OpenAI JSON response, using fallback")
 
-        except Exception as e:
+        except COMMON_SERVICE_EXCEPTIONS as e:
             logger.error("OpenAI query generation failed: %s", str(e))
 
         return self._fallback_query_generation(primary_query, intent, max_queries)
@@ -225,13 +238,19 @@ class OpenAIQueryGenerationService:
         }
 
 
-# Global service instance for reuse
-_QUERY_GENERATION_SERVICE = None
+class _QueryGenerationServiceSingleton:
+    """Singleton wrapper for OpenAIQueryGenerationService"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> OpenAIQueryGenerationService:
+        """Get or create the singleton service instance"""
+        if cls._instance is None:
+            cls._instance = OpenAIQueryGenerationService()
+        return cls._instance
 
 
 def get_query_generation_service() -> OpenAIQueryGenerationService:
     """Get or create global query generation service instance"""
-    global _QUERY_GENERATION_SERVICE
-    if _QUERY_GENERATION_SERVICE is None:
-        _QUERY_GENERATION_SERVICE = OpenAIQueryGenerationService()
-    return _QUERY_GENERATION_SERVICE
+    return _QueryGenerationServiceSingleton.get_instance()
