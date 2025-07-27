@@ -393,51 +393,57 @@ class OpenAISummarizerModel:
     Encapsulates all OpenAI API interactions for summarization
     Pure data access layer - no business logic
     """
-    
+
     def __init__(self):
         self.langchain_available = LANGCHAIN_AVAILABLE
         self.api_key = get_openai_api_key()
-    
+
     def is_ready(self) -> bool:
         """Check if the model is ready for use"""
         return self.langchain_available and self.api_key is not None
-    
+
     def get_status(self) -> dict:
         """Get model status"""
         return get_summarization_status()
-    
+
     def estimate_tokens(self, text: str) -> int:
         """Estimate token count for text"""
         return estimate_tokens(text)
-    
+
     def sanitize_text(self, text: str) -> str:
         """Sanitize text for safe processing"""
         return sanitize_article_text(text)
-    
+
     def chunk_text(self, text: str, max_chunk_tokens: int = 12000) -> List[str]:
         """Chunk text for processing"""
         return chunk_text_for_openai(text, max_chunk_tokens)
-    
+
     def create_basic_chain(self):
         """Create basic summarization chain"""
         return create_summarization_chain()
-    
+
     def create_line_limited_chain(self, max_lines: int = 30):
         """Create line-limited summarization chain"""
         return create_line_limited_chain(max_lines)
-    
+
     def create_intent_chain(self, intent: str, confidence: float):
         """Create intent-aware summarization chain"""
         return create_intent_aware_chain(intent, confidence)
 
 
-# Global model instance
-_openai_summarizer_model = None
+class OpenAISummarizerModelSingleton:
+    """Singleton class for OpenAI Summarizer Model"""
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls) -> OpenAISummarizerModel:
+        """Get or create the singleton instance"""
+        if cls._instance is None:
+            cls._instance = OpenAISummarizerModel()
+        return cls._instance
 
 
 def get_openai_summarizer_model() -> OpenAISummarizerModel:
     """Get or create global OpenAI summarizer model instance"""
-    global _openai_summarizer_model
-    if _openai_summarizer_model is None:
-        _openai_summarizer_model = OpenAISummarizerModel()
-    return _openai_summarizer_model
+    return OpenAISummarizerModelSingleton.get_instance()
