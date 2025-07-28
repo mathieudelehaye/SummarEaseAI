@@ -121,15 +121,19 @@ def summarize_article(topic, max_lines=30, use_intent=True, model_type='openai')
                 'query': topic,
                 'max_lines': max_lines
             }
-        
         response = requests.post(
             f"{API_BASE_URL}{endpoint}",
             json=payload,
             timeout=60
         )
-        
-        return response.json(), response.status_code
+        try:
+            return response.json(), response.status_code
+        except Exception as e:
+            # Log the raw response for debugging
+            st.error(f"Raw response from backend: {response.text}")
+            return {'error': f"Request failed: {str(e)}"}, response.status_code
     except Exception as e:
+        st.error(f"Exception in summarize_article: {str(e)}")
         return {'error': f"Request failed: {str(e)}"}, 500
 
 def semantic_search(query, max_results=5):
@@ -147,9 +151,6 @@ def semantic_search(query, max_results=5):
     return None
 
 def main():
-    import streamlit as st
-    st.warning("✅ Streamlit app launched")
-
     # Header
     st.markdown('<h1 class="main-header">🤖 SummarEaseAI</h1>', unsafe_allow_html=True)
     st.markdown(
@@ -162,20 +163,20 @@ def main():
         st.header("🎛️ Configuration")
         
         # API Status
-        # st.subheader("API Status")
-        # api_healthy = check_api_health()
-        # if api_healthy:
-        st.success("✅ API is running")
-        api_status = get_api_status()
-        if api_status and 'features' in api_status:
-            features = api_status['features']
-            st.info(f"🚀 BERT Model: {'✅' if features.get('bert_model') else '❌'}")
-            st.info(f"📡 OpenAI: {'✅' if features.get('openai_summarization') else '❌'}")
-            st.info(f"🌍 Wikipedia: {'✅' if features.get('wikipedia_fetching') else '❌'}")
-        # else:
-        #     st.error("❌ API is not responding")
-        #     st.markdown("**To start the API:**")
-        #     st.code("cd backend && python api.py", language="bash")
+        st.subheader("API Status")
+        api_healthy = check_api_health()
+        if api_healthy:
+            st.success("✅ API is running")
+            api_status = get_api_status()
+            if api_status and 'features' in api_status:
+                features = api_status['features']
+                st.info(f"🚀 BERT Model: {'✅' if features.get('bert_model') else '❌'}")
+                st.info(f"📡 OpenAI: {'✅' if features.get('openai_summarization') else '❌'}")
+                st.info(f"🌍 Wikipedia: {'✅' if features.get('wikipedia_fetching') else '❌'}")
+        else:
+            st.error("❌ API is not responding")
+            st.markdown("**To start the API:**")
+            st.code("cd backend && python api.py", language="bash")
         
         st.divider()
         
