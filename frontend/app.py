@@ -150,7 +150,7 @@ def main():
     # Header
     st.markdown('<h1 class="main-header">🤖 SummarEaseAI</h1>', unsafe_allow_html=True)
     st.markdown(
-        '<p style="text-align: center; font-size: 1.2rem; color: #666;">AI-Powered Wikipedia Summarization with <span class="tf-badge">TensorFlow</span> & DirectML</p>',
+        '<p style="text-align: center; font-size: 1.2rem; color: #666;">AI-Powered Wikipedia Summarization with <span class="tf-badge">PyTorch</span> & OpenAI</p>',
         unsafe_allow_html=True
     )
     
@@ -309,6 +309,7 @@ def main():
                                 st.metric("Article Length", f"{result['article'].get('length', 0):,} chars")
                         with col_b:
                             st.metric("Summary Length", f"{result.get('summary_length', 0):,} chars")
+                            article_len = 0
                             if 'article' in result:
                                 article_len = int(result['article'].get('length', 0))
                             summary_len = int(result.get('summary_length', 0))
@@ -341,13 +342,13 @@ def main():
         
         # Intent prediction form
         with st.form("intent_form"):
-                intent_text = st.text_area(
-                    "Enter text to classify:",
-                    placeholder="e.g., 'Tell me about the Apollo moon landing'",
-                    height=100
-                )
+            intent_text = st.text_area(
+                "Enter text to classify:",
+                placeholder="e.g., 'Tell me about the Apollo moon landing'",
+                height=100
+            )
             predict_button = st.form_submit_button("🧠 Predict Intent")
-        
+            
         if predict_button and intent_text:
             with st.spinner("Analyzing intent..."):
                 intent_result = predict_intent(intent_text)
@@ -394,13 +395,13 @@ def main():
                             }
                     ))
                         
-                        fig.update_layout(
-                            height=200,
-                            margin=dict(l=10, r=10, t=40, b=10),
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(0,0,0,0)",
-                            font={'color': "#666666"}
-                        )
+                    fig.update_layout(
+                        height=200,
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font={'color': "#666666"}
+                    )
                         
                     st.plotly_chart(fig, use_container_width=True)
     

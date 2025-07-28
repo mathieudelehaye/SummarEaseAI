@@ -1,0 +1,29 @@
+[MASTER]
+ignore=migrations,.venv,__pycache__,.git
+ignore-paths=^.*site-packages/sympy/polys/numberfields/resolvent_lookup\.py$
+load-plugins=
+
+[MESSAGES CONTROL]
+disable=
+    C0114,  # Missing module docstring
+    C0115,  # Missing class docstring
+    C0116,  # Missing function or method docstring
+    W0613,  # Unused argument (common in Flask route handlers)
+    R0801,  # Similar lines in the same file
+    R0903,  # Too few public methods (common for lightweight service/model classes)
+    W0511,  # TODO/FIXME in comments
+    C0412,  # Ungrouped imports (langchain_openai is separate from langchain)
+    astroid-error,  # Disable astroid errors (like recursion issues with complex libraries)
+
+[TYPECHECK]
+generated-members=
+
+[CLASSES]
+defining-attr-methods=
+    __init__,
+    setUp,
+    setup_method
+
+[DESIGN]
+max-args=6
+max-positional-arguments=6
