@@ -200,7 +200,9 @@ class _LLMClientSingleton:
             if api_key and len(api_key.strip()) > 0:
                 cls._instance = LLMClient()
             else:
-                cls._instance = None
+                # Return a dummy client instead of None to avoid NoneType errors
+                logger.warning("OpenAI API key not found, creating dummy LLM client")
+                cls._instance = LLMClient()  # Will handle missing key internally
         return cls._instance
 
 

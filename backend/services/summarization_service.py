@@ -20,6 +20,15 @@ except ImportError:
     BERT_AVAILABLE = False
     get_bert_classifier = None
 
+# Import MultiSourceAgentService for multi-source summarization
+try:
+    from backend.services.multi_source_agent_service import get_multi_source_agent_service
+    MULTI_SOURCE_AVAILABLE = True
+except ImportError:
+    MULTI_SOURCE_AVAILABLE = False
+    get_multi_source_agent_service = None
+    logging.warning("MultiSourceAgentService not available")
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,8 +37,10 @@ class SummarizationService:
 
     def __init__(self):
         """Initialize the summarization service"""
-        # Load environment variables
-        load_dotenv()
+        # Load environment variables from backend/.env
+        backend_dir = Path(__file__).parent.parent
+        env_path = backend_dir / ".env"
+        load_dotenv(env_path)
 
         # Get repository root
         self.repo_root = Path(__file__).resolve().parent.parent.parent
@@ -255,12 +266,60 @@ class SummarizationService:
         query: str,
         max_articles: int = 3,
         max_lines: int = 10,
-        cost_mode: str = "balanced",
+        cost_mode: str = "BALANCED",
     ) -> Dict[str, Any]:
         """Summarize using multi-source approach with agent integration"""
-        return self.summarize_multi_source(
-            query=query, max_articles=max_articles, cost_mode=cost_mode
-        )
+        if not MULTI_SOURCE_AVAILABLE or not get_multi_source_agent_service:
+            logger.warning("MultiSourceAgentService not available, falling back to single source")
+            result = self.summarize_single_source(query, max_lines)
+            result["method"] = "single_source_fallback"
+            result["agent_powered"] = False
+            result["total_sources"] = 1
+            return result
+
+        try:
+            # Get the multi-source agent service
+            agent_service = get_multi_source_agent_service()
+            
+            # Call the agent service with proper parameters (note: uses user_query not query)
+            result = agent_service.get_multi_source_summary(
+                user_query=query,
+                user_intent=None  # Let the service detect intent automatically
+            )
+            
+            # Ensure proper response format
+            if "error" not in result:
+                # Format the response to match expected API format
+                formatted_result = {
+                    "query": result.get("user_query", query),
+                    "summary": result.get("synthesis", ""),
+                    "method": "multi_source_agents",
+                    "agent_powered": True,
+                    "total_sources": result.get("articles_used", 0),
+                    "articles": result.get("individual_summaries", []),
+                    "intent": result.get("detected_intent", "Unknown"),
+                    "confidence": 0.9,  # Default confidence for agent-powered results
+                    "usage_stats": result.get("usage_stats", {}),
+                    "cost_tracking": result.get("usage_stats", {}),
+                    "summary_length": len(result.get("synthesis", "")),
+                    "summary_lines": len(result.get("synthesis", "").split("\n")),
+                    "wikipedia_pages": [article.get("title", "") for article in result.get("individual_summaries", [])]
+                }
+                
+                logger.info("✅ Multi-source summarization completed with agents")
+                return formatted_result
+            else:
+                return result
+            
+        except Exception as e:
+            logger.error("❌ Error in multi-source agent summarization: %s", str(e))
+            # Fallback to single source on error
+            result = self.summarize_single_source(query, max_lines)
+            result["method"] = "single_source_error_fallback"
+            result["agent_powered"] = False
+            result["total_sources"] = 1
+            result["error_details"] = str(e)
+            return result
 
 
 class _SummarizationServiceSingleton:

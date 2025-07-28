@@ -449,7 +449,8 @@ def summarize_multi_source():
             "agent_powered": result.get("agent_powered", False),
             "articles": result.get("articles", []),
             "usage_stats": result.get("usage_stats", {}),
-            "cost_tracking": result.get("cost_tracking", {})
+            "cost_tracking": result.get("cost_tracking", {}),
+            "wikipedia_pages": result.get("wikipedia_pages", [])
         }
 
         logger.info(

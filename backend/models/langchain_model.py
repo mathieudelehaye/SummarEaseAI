@@ -271,7 +271,7 @@ class QueryEnhancementAgent:
         if not LANGCHAIN_AVAILABLE:
             raise ImportError("LangChain not available")
 
-        self.llm = get_llm_client().get_llm_client()
+        self.llm = get_llm_client()
         self._initialize_agent()
 
     def _initialize_agent(self):
@@ -365,7 +365,7 @@ class ArticleSelectionAgent:
         if not LANGCHAIN_AVAILABLE:
             raise ImportError("LangChain not available")
 
-        self.llm = get_llm_client().get_llm_client()
+        self.llm = get_llm_client()
         self._initialize_agent()
 
     def _initialize_agent(self):

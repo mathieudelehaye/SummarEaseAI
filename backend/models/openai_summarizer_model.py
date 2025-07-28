@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 try:
     from langchain.chains import LLMChain
     from langchain.prompts import PromptTemplate
+    from langchain.schema import BaseOutputParser
     from langchain.text_splitter import RecursiveCharacterTextSplitter
     from langchain_openai import ChatOpenAI
 
@@ -25,6 +26,7 @@ except ImportError:
         from langchain.chains import LLMChain
         from langchain.chat_models import ChatOpenAI
         from langchain.prompts import PromptTemplate
+        from langchain.schema import BaseOutputParser
         from langchain.text_splitter import RecursiveCharacterTextSplitter
 
         LANGCHAIN_AVAILABLE = True
@@ -64,6 +66,29 @@ def parse_summary_output(text: str) -> str:
             summary = summary[len(prefix) :].strip()
 
     return summary
+
+
+class SummaryOutputParser(BaseOutputParser):
+    """Custom output parser for summary responses"""
+    
+    def parse(self, text: str) -> str:
+        """Parse the output from the LLM"""
+        # Clean up the response
+        summary = text.strip()
+        
+        # Remove any unwanted prefixes
+        prefixes_to_remove = [
+            "Summary:",
+            "Here's a summary:",
+            "Here is a summary:",
+            "The summary is:",
+        ]
+        
+        for prefix in prefixes_to_remove:
+            if summary.lower().startswith(prefix.lower()):
+                summary = summary[len(prefix):].strip()
+        
+        return summary
 
 
 def get_openai_api_key() -> Optional[str]:
@@ -186,7 +211,7 @@ def create_summarization_chain():
         )
 
         # Create the chain
-        chain = LLMChain(llm=llm, prompt=prompt, output_parser=parse_summary_output)
+        chain = LLMChain(llm=llm, prompt=prompt, output_parser=SummaryOutputParser())
 
         return chain
 
@@ -229,7 +254,7 @@ def create_line_limited_chain(max_lines: int = 30):
             input_variables=["article_text"], template=prompt_template
         )
 
-        chain = LLMChain(llm=llm, prompt=prompt, output_parser=parse_summary_output)
+        chain = LLMChain(llm=llm, prompt=prompt, output_parser=SummaryOutputParser())
 
         return chain
 
@@ -377,7 +402,7 @@ def create_intent_aware_chain(intent: str, confidence: float):
             input_variables=["article_text"], template=prompt_template
         )
 
-        chain = LLMChain(llm=llm, prompt=prompt, output_parser=parse_summary_output)
+        chain = LLMChain(llm=llm, prompt=prompt, output_parser=SummaryOutputParser())
 
         return chain
 

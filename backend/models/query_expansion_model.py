@@ -51,9 +51,23 @@ class OpenAIQueryGenerationService:
         self.llm_client = get_llm_client()
         self.llm = None
 
+        logger.info("🔧 Initializing OpenAI Query Generation Service...")
+        logger.info("🔧 LANGCHAIN_AVAILABLE: %s", LANGCHAIN_AVAILABLE)
+        logger.info("🔧 OpenAI availability check: %s", self.llm_client.check_openai_availability())
+
         if LANGCHAIN_AVAILABLE and self.llm_client.check_openai_availability():
             try:
+                logger.info("🔧 Creating ChatOpenAI instance...")
+                # Pass the API key explicitly to ensure it's available
+                import os
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    logger.error("❌ OPENAI_API_KEY not found in environment")
+                    self.llm = None
+                    return
+                    
                 self.llm = ChatOpenAI(
+                    openai_api_key=api_key,
                     model="gpt-3.5-turbo",
                     temperature=0.3,  # Low temperature for consistent results
                     max_tokens=1000,
@@ -63,7 +77,7 @@ class OpenAIQueryGenerationService:
                 )
             except (ImportError, ValueError, AttributeError, OSError) as e:
                 logger.error(
-                    "❌ Failed to initialize OpenAI query generation: %s", str(e)
+                    "❌ Failed to initialize OpenAI query generation: %s", str(e), exc_info=True
                 )
                 self.llm = None
         else:
@@ -92,6 +106,7 @@ class OpenAIQueryGenerationService:
             intent,
         )
 
+        logger.info("🔧 LLM status: %s", "Available" if self.llm else "None - using fallback")
         if self.llm:
             return self._openai_query_generation(primary_query, intent, max_queries)
         return self._fallback_query_generation(primary_query, intent, max_queries)
@@ -101,6 +116,7 @@ class OpenAIQueryGenerationService:
     ) -> Dict[str, List[str]]:
         """Generate queries using OpenAI/LangChain"""
         try:
+            logger.info("🔧 Starting OpenAI query generation for: %s (intent: %s)", primary_query, intent)
             # Intent-specific prompts for better query generation
             intent_strategies = {
                 "History": "historical events, key figures, timeline, causes and effects",
@@ -139,10 +155,11 @@ class OpenAIQueryGenerationService:
 
             # Parse JSON response
             try:
+                logger.info("🔍 OpenAI raw response: %s", response.strip()[:200])
                 queries = json.loads(response.strip())
                 if isinstance(queries, list):
                     logger.info(
-                        "✅ Generated %d secondary queries using OpenAI", len(queries)
+                        "✅ Generated %d secondary queries using OpenAI: %s", len(queries), queries
                     )
                     return {
                         "queries": queries[:max_queries],
@@ -150,11 +167,14 @@ class OpenAIQueryGenerationService:
                         "intent_strategy": strategy,
                         "confidence": 0.9,
                     }
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse OpenAI JSON response, using fallback")
+                else:
+                    logger.warning("OpenAI response is not a list: %s", type(queries))
+            except json.JSONDecodeError as e:
+                logger.warning("Failed to parse OpenAI JSON response: %s. Raw response: %s", 
+                              str(e), response.strip()[:200])
 
         except COMMON_SERVICE_EXCEPTIONS as e:
-            logger.error("OpenAI query generation failed: %s", str(e))
+            logger.error("OpenAI query generation failed: %s", str(e), exc_info=True)
 
         return self._fallback_query_generation(primary_query, intent, max_queries)
 
