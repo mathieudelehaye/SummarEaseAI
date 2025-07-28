@@ -57,7 +57,6 @@ LICENSE
 # Docker
 .docker/
 docker-compose.yml
-Dockerfile*
 
 # Azure
 .azure/
