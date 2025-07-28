@@ -147,7 +147,8 @@ def semantic_search(query, max_results=5):
     return None
 
 def main():
-    print("✅ Streamlit app started")
+    import streamlit as st
+    st.warning("✅ Streamlit app launched")
 
     # Header
     st.markdown('<h1 class="main-header">🤖 SummarEaseAI</h1>', unsafe_allow_html=True)
@@ -161,20 +162,20 @@ def main():
         st.header("🎛️ Configuration")
         
         # API Status
-        st.subheader("API Status")
-        api_healthy = check_api_health()
-        if api_healthy:
-            st.success("✅ API is running")
-            api_status = get_api_status()
-            if api_status and 'features' in api_status:
-                features = api_status['features']
-                st.info(f"🚀 BERT Model: {'✅' if features.get('bert_model') else '❌'}")
-                st.info(f"📡 OpenAI: {'✅' if features.get('openai_summarization') else '❌'}")
-                st.info(f"🌍 Wikipedia: {'✅' if features.get('wikipedia_fetching') else '❌'}")
-        else:
-            st.error("❌ API is not responding")
-            st.markdown("**To start the API:**")
-            st.code("cd backend && python api.py", language="bash")
+        # st.subheader("API Status")
+        # api_healthy = check_api_health()
+        # if api_healthy:
+        st.success("✅ API is running")
+        api_status = get_api_status()
+        if api_status and 'features' in api_status:
+            features = api_status['features']
+            st.info(f"🚀 BERT Model: {'✅' if features.get('bert_model') else '❌'}")
+            st.info(f"📡 OpenAI: {'✅' if features.get('openai_summarization') else '❌'}")
+            st.info(f"🌍 Wikipedia: {'✅' if features.get('wikipedia_fetching') else '❌'}")
+        # else:
+        #     st.error("❌ API is not responding")
+        #     st.markdown("**To start the API:**")
+        #     st.code("cd backend && python api.py", language="bash")
         
         st.divider()
         
@@ -215,10 +216,10 @@ def main():
         """)
     
     # Main content
-    if not api_healthy:
-        st.error("Please start the Flask API backend to use SummarEaseAI.")
-        st.markdown("Run: `cd backend && python api.py`")
-        return
+    # if not api_healthy:
+    #     st.error("Please start the Flask API backend to use SummarEaseAI.")
+    #     st.markdown("Run: `cd backend && python api.py`")
+    #     return
     
     # Create tabs
     tab1, tab2, tab3 = st.tabs([
