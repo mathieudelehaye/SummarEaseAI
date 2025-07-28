@@ -37,10 +37,7 @@ services:
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - STREAMLIT_SERVER_HEADLESS=true
       - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
-      - BACKEND_URL=${BACKEND_URL:-http://backend:5000}
-    depends_on:
-      backend:
-        condition: service_healthy
+      - BACKEND_URL=http://backend:7860
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
@@ -49,6 +46,8 @@ services:
       start_period: 20s
     networks:
       - summarease-network
+
+# In production (e.g., Render.com), set the BACKEND_URL environment variable to your deployed backend URL.
 
 networks:
   summarease-network:
