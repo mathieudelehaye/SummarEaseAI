@@ -69,7 +69,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Configuration
-API_BASE_URL = os.getenv('BACKEND_URL', 'http://backend:5000')  # Use environment variable with fallback for local Docker
+API_BASE_URL = os.getenv('BACKEND_URL', 'https://huggingface.co/spaces/mdelehaye/summarease-backend')
 
 def check_api_health():
     """Check if the Flask API is running"""
@@ -147,6 +147,8 @@ def semantic_search(query, max_results=5):
     return None
 
 def main():
+    print("✅ Streamlit app started")
+
     # Header
     st.markdown('<h1 class="main-header">🤖 SummarEaseAI</h1>', unsafe_allow_html=True)
     st.markdown(
