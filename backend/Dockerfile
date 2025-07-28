@@ -79,9 +79,6 @@ ENV CONTAINER_ENV=true
 ENV TRANSFORMERS_CACHE=/tmp/cache
 ENV HF_HOME=/tmp/cache
 
-# Environment variables for API keys (will be injected by Hugging Face)
-ENV OPENAI_API_KEY=${OPENAI_API_KEY}
-
 # Clean up unnecessary files
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/* && \
