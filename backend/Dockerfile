@@ -36,14 +36,20 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy only necessary files and models
-COPY backend/api.py backend/
-COPY backend/hf_summarizer.py backend/
-COPY backend/summarizer.py backend/
-COPY utils/langchain_agents.py utils/
-COPY utils/multi_source_agent.py utils/
-COPY utils/openai_query_generator.py utils/
-COPY utils/wikipedia_fetcher.py utils/
+# Copy MVC structured backend files (only production-needed files)
+COPY backend/__init__.py backend/
+COPY backend/views/__init__.py backend/views/
+COPY backend/views/api_routes.py backend/views/
+COPY backend/models/__init__.py backend/models/
+COPY backend/models/langchain_model.py backend/models/
+COPY backend/models/llm_client.py backend/models/
+COPY backend/models/openai_summarizer_model.py backend/models/
+COPY backend/models/query_expansion_model.py backend/models/
+COPY backend/models/wikipedia_model.py backend/models/
+COPY backend/services/__init__.py backend/services/
+COPY backend/services/multi_source_agent_service.py backend/services/
+COPY backend/services/summarization_service.py backend/services/
+COPY backend/services/summarization_workflow_service.py backend/services/
 COPY ml_models/bert_classifier.py ml_models/
 COPY ml_models/intent_classifier.py ml_models/
 
@@ -64,7 +70,7 @@ RUN mkdir -p /tmp/cache /tmp/logs && \
 
 # Set Python path and environment variables
 ENV PYTHONPATH=/app
-ENV FLASK_APP=backend/api.py
+ENV FLASK_APP=backend/views/api_routes.py
 ENV FLASK_ENV=production
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -90,4 +96,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
 # Run the application with Hugging Face's port
-CMD ["python", "backend/api.py"] 
+CMD ["python", "-m", "backend.views.api_routes"] 
