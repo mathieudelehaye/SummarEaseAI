@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: summarease-frontend
+    env: docker
+    region: frankfurt
+    plan: free
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - Dockerfile
+        - app.py
