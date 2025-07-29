@@ -4,180 +4,306 @@ Handles summarization requests and coordinates with services
 """
 
 import logging
+
+# TODO: Move to a separate service or model in the future
+import wikipedia
+
+from dotenv import load_dotenv
+from pathlib import Path
 from typing import Any, Dict
 
-from backend.services.summarization_service import get_summarization_service
+# Import BERT classifier at module level to avoid import-outside-toplevel
+try:
+    from ml_models.bert_classifier import get_classifier as get_bert_classifier
+
+    BERT_AVAILABLE = True
+except ImportError:
+    BERT_AVAILABLE = False
+    get_bert_classifier = None
+
+# Import MultiSourceAgentService for multi-source summarization
+try:
+    from backend.services.multi_source_agent_service import get_multi_source_agent_service
+    MULTI_SOURCE_AVAILABLE = True
+except ImportError:
+    MULTI_SOURCE_AVAILABLE = False
+    get_multi_source_agent_service = None
+    logging.warning("MultiSourceAgentService not available")
 
 logger = logging.getLogger(__name__)
 
 
-def format_summarization_response(
-    result: Dict[str, Any], cost_mode: str, articles=None
-):
-    """Format a standardized summarization response"""
-    response = {
-        "query": result["query"],
-        "summary": result["summary"],
-        "metadata": {
-            "intent": result.get("intent"),
-            "confidence": result.get("confidence"),
-            "method": result.get("method"),
-            "total_sources": result.get("total_sources", 0),
-            "summary_length": result.get("summary_length", 0),
-            "summary_lines": result.get("summary_lines", 0),
-            "agent_powered": result.get("agent_powered", False),
-            "cost_mode": cost_mode,
-        },
-    }
-
-    if articles:
-        response["articles"] = [
-            {
-                "title": article["title"],
-                "url": article["url"],
-                "selection_method": article.get("selection_method", "unknown"),
-            }
-            for article in articles
-        ]
-
-    return response
-
-
 class SummarizationController:
-    """
-    Handles HTTP requests for summarization endpoints
-    Pure HTTP concerns - no business logic
-    """
+    """Controller class for handling all summarization operations"""
 
     def __init__(self):
-        self.summarization_service = get_summarization_service()
+        """Initialize the summarization controller"""
+        # Load environment variables from backend/.env
+        backend_dir = Path(__file__).parent.parent
+        env_path = backend_dir / ".env"
+        load_dotenv(env_path)
 
-    def _validate_multi_source_request(
-        self, request_data: Dict[str, Any]
-    ) -> tuple[Dict[str, Any], int] | None:
-        """Validate multi-source request parameters.
-        Returns error tuple if invalid, None if valid."""
-        query = request_data.get("query", "").strip()
-        max_lines = request_data.get("max_lines", 30)
-        max_articles = request_data.get("max_articles", 3)
-        cost_mode = request_data.get("cost_mode", "BALANCED")
+        # Get repository root
+        self.repo_root = Path(__file__).resolve().parent.parent.parent
 
-        if not query:
-            return {"error": "Missing query parameter"}, 400
-        if max_lines < 5 or max_lines > 100:
-            return {"error": "max_lines must be between 5 and 100"}, 400
-        if max_articles < 1 or max_articles > 10:
-            return {"error": "max_articles must be between 1 and 10"}, 400
-        if cost_mode not in ["MINIMAL", "BALANCED", "COMPREHENSIVE"]:
+        # Initialize BERT classifier if available
+        self._init_bert_classifier()
+
+        # Define categories
+        self.bert_categories = [
+            "History",
+            "Music",
+            "Science",
+            "Sports",
+            "Technology",
+            "Finance",
+        ]
+        self.special_categories = ["NO DETECTED"]
+        self.all_categories = self.bert_categories + self.special_categories
+
+        logger.info("✅ SummarizationController initialized successfully")
+
+    def _init_bert_classifier(self):
+        """Initialize BERT classifier if available"""
+        try:
+            if not BERT_AVAILABLE:
+                logger.warning("BERT classifier not available")
+                self.bert_classifier = None
+                self.bert_model_loaded = False
+                return
+
+            model_path = self.repo_root / "ml_models" / "bert_gpu_model"
+            logger.info("Loading BERT model from: %s", model_path)
+
+            self.bert_classifier = get_bert_classifier(str(model_path))
+
+            if self.bert_classifier is None:
+                logger.error("❌ Failed to initialize BERT classifier!")
+                self.bert_model_loaded = False
+            else:
+                if not self.bert_classifier.is_loaded():
+                    logger.info("🔄 Loading BERT model...")
+                    self.bert_model_loaded = self.bert_classifier.load_model()
+                    if self.bert_model_loaded:
+                        logger.info("✅ BERT model loaded successfully")
+                    else:
+                        logger.error("❌ Failed to load BERT model!")
+                else:
+                    self.bert_model_loaded = True
+                    logger.info("✅ BERT model already loaded")
+        except ImportError as e:
+            logger.warning("BERT classifier not available: %s", e)
+            self.bert_classifier = None
+            self.bert_model_loaded = False
+
+    def predict_intent_bert(self, text: str) -> Dict[str, Any]:
+        """Predict intent using BERT classifier"""
+        if not hasattr(self, "bert_model_loaded") or not self.bert_model_loaded:
             return {
-                "error": "cost_mode must be MINIMAL, BALANCED, or COMPREHENSIVE"
-            }, 400
-        return None
-
-    def handle_multi_source_request(
-        self, request_data: Dict[str, Any]
-    ) -> tuple[Dict[str, Any], int]:
-        """
-        Handle /summarize_multi_source endpoint
-        Pure HTTP concerns - validates input and calls service
-        """
-        # Input validation
-        validation_error = self._validate_multi_source_request(request_data)
-        if validation_error:
-            return validation_error
-
-        # Extract validated input
-        query = request_data.get("query", "").strip()
-        max_lines = request_data.get("max_lines", 30)
-        max_articles = request_data.get("max_articles", 3)
-        cost_mode = request_data.get("cost_mode", "BALANCED")
-
-        logger.info(
-            "📝 Multi-source summarization request: '%s' (max_lines: %s, max_articles: %s)",
-            query,
-            max_lines,
-            max_articles,
-        )
-
-        try:
-            # Call service (business logic happens here)
-            result = self.summarization_service.summarize_multi_source_with_agents(
-                query=query,
-                max_articles=max_articles,
-                max_lines=max_lines,
-                cost_mode=cost_mode,
-            )
-
-            if "error" in result:
-                return result, 500
-
-            # Format successful response using shared utility
-            response = format_summarization_response(
-                result, cost_mode, result.get("articles", [])
-            )
-
-            logger.info("✅ Multi-source summarization completed successfully")
-            return response, 200
-
-        except (ValueError, KeyError, ConnectionError, TimeoutError) as e:
-            logger.error("❌ Multi-source summarization failed: %s", str(e))
-            return {"error": "Internal server error", "details": str(e)}, 500
-
-    def handle_single_source_request(
-        self, request_data: Dict[str, Any]
-    ) -> tuple[Dict[str, Any], int]:
-        """
-        Handle /summarize endpoint (single source)
-        Pure HTTP concerns - validates input and calls service
-        """
-        # Extract and validate input
-        query = request_data.get("query", "").strip()
-        max_lines = request_data.get("max_lines", 30)
-
-        # Input validation
-        if not query:
-            return {"error": "Missing query parameter"}, 400
-
-        if max_lines < 5 or max_lines > 100:
-            return {"error": "max_lines must be between 5 and 100"}, 400
-
-        logger.info(
-            "📝 Single-source summarization request: '%s' (max_lines: %s)",
-            query,
-            max_lines,
-        )
-
-        try:
-            # Call service (business logic happens here)
-            result = self.summarization_service.summarize_single_source(
-                query=query, max_lines=max_lines
-            )
-
-            if "error" in result:
-                if "No Wikipedia content found" in result["error"]:
-                    return result, 404
-                return result, 500
-
-            # Format successful response
-            response = {
-                "query": result["query"],
-                "summary": result["summary"],
-                "metadata": {
-                    "processed_query": result.get("processed_query"),
-                    "was_converted": result.get("was_converted", False),
-                    "method": result.get("method"),
-                    "model": result.get("model"),
-                    "summary_length": result.get("summary_length", 0),
-                },
-                "article": result.get("article", {}),
+                "error": "BERT model not loaded",
+                "predicted_category": "NO DETECTED",
+                "confidence": 0.0,
+                "all_scores": {},
             }
 
-            logger.info("✅ Single-source summarization completed successfully")
-            return response, 200
+        try:
+            prediction = self.bert_classifier.predict(text)
+            if isinstance(prediction, tuple) and len(prediction) == 2:
+                predicted_intent, confidence = prediction
+                return {
+                    "text": text,
+                    "predicted_category": predicted_intent,
+                    "confidence": confidence,
+                    # BERT classifier doesn't return all scores in current implementation
+                    "all_scores": {},
+                }
+            return {"error": "Invalid prediction format"}
+        except Exception as e:
+            logger.error("Error in BERT prediction: %s", e)
+            return {
+                "error": str(e),
+                "predicted_category": "NO DETECTED",
+                "confidence": 0.0,
+                "all_scores": {},
+            }
 
-        except (ValueError, KeyError, ConnectionError, TimeoutError) as e:
-            logger.error("❌ Single-source summarization failed: %s", str(e))
-            return {"error": "Internal server error", "details": str(e)}, 500
+    # TODO: move this to the Wikipedia model
+    def _search_wikipedia(self, query: str, max_results: int = 3) -> Dict[str, Any]:
+        """Basic Wikipedia search functionality"""
+        try:
+            # Search for articles
+            search_results = wikipedia.search(query, results=max_results)
+            if not search_results:
+                return {
+                    "error": "No Wikipedia articles found",
+                    "query": query,
+                    "summary": None,
+                }
+
+            # Get the first article
+            article_title = search_results[0]
+            page = wikipedia.page(article_title)
+
+            # Get summary (first few sentences)
+            summary = wikipedia.summary(article_title, sentences=5)
+
+            return {
+                "query": query,
+                "title": article_title,
+                "summary": summary,
+                "url": page.url,
+                "status": "success",
+            }
+
+        except wikipedia.exceptions.DisambiguationError as e:
+            # Handle disambiguation by taking the first option
+            try:
+                page = wikipedia.page(e.options[0])
+                summary = wikipedia.summary(e.options[0], sentences=5)
+                return {
+                    "query": query,
+                    "title": e.options[0],
+                    "summary": summary,
+                    "url": page.url,
+                    "status": "success",
+                }
+            except (wikipedia.PageError, KeyError, ValueError) as inner_e:
+                logger.error("Error handling disambiguation: %s", inner_e)
+                return {
+                    "error": f"Disambiguation error: {str(inner_e)}",
+                    "query": query,
+                    "summary": None,
+                }
+        except (ConnectionError, TimeoutError) as e:
+            logger.error("Error in Wikipedia search: %s", e)
+            return {"error": str(e), "query": query, "summary": None}
+
+    def summarize_single_source(
+        self,
+        query: str,
+        max_lines: int = 30,
+        model_type: str = "wikipedia",
+        use_intent: bool = True,
+    ) -> Dict[str, Any]:
+        """Summarize using single source (Wikipedia)"""
+        try:
+            # Get intent if requested
+            intent_info = None
+            if (
+                use_intent
+                and hasattr(self, "bert_model_loaded")
+                and self.bert_model_loaded
+            ):
+                intent_result = self.predict_intent_bert(query)
+                intent_info = {
+                    "category": intent_result.get("predicted_category", "NO DETECTED"),
+                    "confidence": intent_result.get("confidence", 0.0),
+                }
+
+            # Get Wikipedia summary
+            result = self._search_wikipedia(query)
+
+            if intent_info:
+                result["intent"] = intent_info
+
+            return result
+
+        except Exception as e:
+            logger.error("Error in single source summarization: %s", e)
+            return {
+                "error": str(e),
+                "query": query,
+                "summary": None,
+                "wikipedia_url": None,
+            }
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get application health status"""
+        return {
+            "status": "healthy",
+            "bert_model_loaded": getattr(self, "bert_model_loaded", False),
+            "categories": self.bert_categories,
+            "repo_root": str(self.repo_root),
+            "wikipedia_available": True,
+        }
+
+    def get_system_status(self) -> Dict[str, Any]:
+        """Get system status for frontend"""
+        return {
+            "models": {
+                "bert": {
+                    "loaded": getattr(self, "bert_model_loaded", False),
+                    "categories": self.bert_categories,
+                }
+            },
+            "services": {
+                "wikipedia": True,
+                "openai": True,
+            },
+            "status": "healthy",
+        }
+
+    def classify_intent(self, text: str) -> Dict[str, Any]:
+        """Classify intent using BERT model"""
+        return self.predict_intent_bert(text)
+
+    def summarize_multi_source_with_agents(
+        self,
+        query: str,
+        max_lines: int = 10,
+    ) -> Dict[str, Any]:
+        """Summarize using multi-source approach with agent integration"""
+        if not MULTI_SOURCE_AVAILABLE or not get_multi_source_agent_service:
+            logger.warning("MultiSourceAgentService not available, falling back to single source")
+            result = self.summarize_single_source(query, max_lines)
+            result["method"] = "single_source_fallback"
+            result["agent_powered"] = False
+            result["total_sources"] = 1
+            return result
+
+        try:
+            # Get the multi-source agent service
+            agent_service = get_multi_source_agent_service()
+            
+            # Call the agent service with proper parameters (note: uses user_query not query)
+            result = agent_service.get_multi_source_summary(
+                user_query=query,
+                user_intent=None  # Let the service detect intent automatically
+            )
+            
+            # Ensure proper response format
+            if "error" not in result:
+                # Format the response to match expected API format
+                formatted_result = {
+                    "query": result.get("user_query", query),
+                    "summary": result.get("synthesis", ""),
+                    "method": "multi_source_agents",
+                    "agent_powered": True,
+                    "total_sources": result.get("articles_used", 0),
+                    "articles": result.get("individual_summaries", []),
+                    "intent": result.get("detected_intent", "Unknown"),
+                    "confidence": 0.9,  # Default confidence for agent-powered results
+                    "usage_stats": result.get("usage_stats", {}),
+                    "cost_tracking": result.get("usage_stats", {}),
+                    "summary_length": len(result.get("synthesis", "")),
+                    "summary_lines": len(result.get("synthesis", "").split("\n")),
+                    "wikipedia_pages": [article.get("title", "") for article in result.get("individual_summaries", [])]
+                }
+                
+                logger.info("✅ Multi-source summarization completed with agents")
+                return formatted_result
+            else:
+                return result
+            
+        except Exception as e:
+            logger.error("❌ Error in multi-source agent summarization: %s", str(e))
+            # Fallback to single source on error
+            result = self.summarize_single_source(query, max_lines)
+            result["method"] = "single_source_error_fallback"
+            result["agent_powered"] = False
+            result["total_sources"] = 1
+            result["error_details"] = str(e)
+            return result
 
 
 class _SummarizationControllerSingleton:
@@ -187,12 +313,12 @@ class _SummarizationControllerSingleton:
 
     @classmethod
     def get_instance(cls) -> SummarizationController:
-        """Get or create the singleton controller instance"""
+        """Get or create the singleton service instance"""
         if cls._instance is None:
             cls._instance = SummarizationController()
         return cls._instance
 
 
 def get_summarization_controller() -> SummarizationController:
-    """Get or create global summarization controller instance"""
+    """Get or create the global summarization controller instance"""
     return _SummarizationControllerSingleton.get_instance()

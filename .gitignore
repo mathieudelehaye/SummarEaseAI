@@ -17,6 +17,8 @@ override.tf.json
 tfplan
 *tfplan*
 
+project_structure.txt
+
 # C extensions
 *.so
 

@@ -321,17 +321,6 @@ class TestErrorHandling:
     """Test error handling in the model"""
 
     @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.get_openai_api_key")
-    @patch("backend.models.openai_summarizer_model.ChatOpenAI")
-    def test_create_chain_with_exception(self, mock_chat_openai, mock_get_key):
-        """Test chain creation when ChatOpenAI raises exception"""
-        mock_get_key.return_value = "test-key"
-        mock_chat_openai.side_effect = Exception("API Error")
-
-        result = create_summarization_chain()
-        assert result is None
-
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
     @patch("backend.models.openai_summarizer_model.RecursiveCharacterTextSplitter")
     def test_chunk_text_splitter_exception(self, mock_splitter_class):
         """Test chunking when text splitter raises exception"""

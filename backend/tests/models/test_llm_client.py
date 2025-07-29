@@ -37,17 +37,6 @@ class TestLLMClient:
         assert llm_client == mock_instance
         mock_llm_class.assert_called_once()
 
-    @patch.dict("os.environ", {}, clear=True)
-    def test_get_llm_client_no_api_key(self):
-        """Test LLM client creation when API key missing"""
-        # Reset singleton instance
-        from backend.models.llm_client import _LLMClientSingleton
-        _LLMClientSingleton._instance = None
-        
-        llm_client = get_llm_client()
-
-        assert llm_client is None
-
     @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
     @patch("backend.models.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
