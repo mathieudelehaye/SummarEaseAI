@@ -38,8 +38,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy MVC structured backend files (only production-needed files)
 COPY backend/__init__.py backend/
-COPY backend/views/__init__.py backend/views/
-COPY backend/views/api_routes.py backend/views/
+COPY backend/controllers/summarization_controller.py backend/controllers/
 COPY backend/models/__init__.py backend/models/
 COPY backend/models/langchain_model.py backend/models/
 COPY backend/models/llm_client.py backend/models/
@@ -48,8 +47,10 @@ COPY backend/models/query_expansion_model.py backend/models/
 COPY backend/models/wikipedia_model.py backend/models/
 COPY backend/services/__init__.py backend/services/
 COPY backend/services/multi_source_agent_service.py backend/services/
-COPY backend/services/summarization_service.py backend/services/
 COPY backend/services/summarization_workflow_service.py backend/services/
+COPY backend/templates/ backend/templates/
+COPY backend/views/__init__.py backend/views/
+COPY backend/views/api_routes.py backend/views/
 COPY ml_models/bert_classifier.py ml_models/
 COPY ml_models/intent_classifier.py ml_models/
 

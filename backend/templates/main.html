@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SummarEaseAI Backend</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        .status { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .available { color: #27ae60; font-weight: bold; }
+        .unavailable { color: #e74c3c; font-weight: bold; }
+        .endpoint { background: #f8f9fa; padding: 10px; margin: 10px 0; border-left: 4px solid #3498db; }
+        code { background: #2c3e50; color: white; padding: 2px 5px; border-radius: 3px; }
+        .categories { background: #e8f6f3; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .category { display: inline-block; margin: 2px 5px; padding: 3px 8px; background: #2980b9; color: white; border-radius: 3px; }
+        .special-category { background: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 SummarEaseAI Backend API</h1>
+        
+        <div class="status">
+            <h3>📊 System Status</h3>
+            <p><strong>BERT Model:</strong> <span class="{{ 'available' if bert_model_loaded else 'unavailable' }}">{{ '✅ Loaded' if bert_model_loaded else '❌ Not Available' }}</span></p>
+        </div>
+
+        <div class="categories">
+            <h3>🏷️ BERT Categories</h3>
+            {% for category in bert_categories %}
+            <span class="category">{{ category }}</span>
+            {% endfor %}
+            
+            <h4>Special Categories</h4>
+            {% for category in special_categories %}
+            <span class="category special-category">{{ category }}</span>
+            {% endfor %}
+        </div>
+
+        <h3>🔗 Available Endpoints</h3>
+        
+        <div class="endpoint">
+            <strong>GET /status</strong> - System status and health check
+        </div>
+        
+        <div class="endpoint">
+            <strong>POST /intent_bert</strong> - Predict intent using BERT model<br>
+            <code>{"text": "your text"}</code>
+        </div>
+        
+        <div class="endpoint">
+            <strong>POST /summarize</strong> - Single-source summarization<br>
+            <code>{"query": "your query", "max_lines": 30}</code>
+        </div>
+        
+        <div class="endpoint">
+            <strong>POST /summarize_multi_source</strong> - Multi-source summarization with agents<br>
+            <code>{"query": "your query", "max_lines": 30, "max_articles": 3, "cost_mode": "BALANCED"}</code>
+        </div>
+
+        <p><strong>Backend URL:</strong> <a href="http://localhost:5000" target="_blank">http://localhost:5000</a></p>
+    </div>
+</body>
+</html>

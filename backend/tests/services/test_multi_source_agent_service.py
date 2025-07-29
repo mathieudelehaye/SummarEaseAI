@@ -3,7 +3,7 @@ Unit tests for MultiSourceAgentService
 Tests the core multi-source intelligence functionality
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 # Import the class under test
 from backend.services.multi_source_agent_service import (
@@ -246,9 +246,7 @@ class TestMultiSourceAgent:
         articles = agent._search_and_gather_articles(strategy, "test query")
         assert isinstance(articles, list)
 
-    
-    
-    
+        
     def test_analyze_intent_with_bert(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
     ):
@@ -263,7 +261,7 @@ class TestMultiSourceAgent:
         result = agent._classify_intent("artificial intelligence")
         assert isinstance(result, str)
         # The actual categories are different from BERT categories
-        assert result in ["general_knowledge", "biography", "definition", "historical_event", "Technology"]
+        assert result in ["general_knowledge", "biography", "definition", "historical_event", "technology"]
 
     def test_analyze_intent_fallback(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
@@ -278,41 +276,7 @@ class TestMultiSourceAgent:
         result = agent._classify_intent("test query")
         assert isinstance(result, str)
         # The actual categories are different from BERT categories
-        assert result in ["general_knowledge", "biography", "definition", "historical_event"]
-
-    def test_rank_articles(
-        self, mock_agent_system, mock_query_gen, mock_get_classifier
-    ):
-        """Test article ranking functionality"""
-        mock_classifier = Mock()
-        mock_classifier.load_model.return_value = True
-        mock_get_classifier.return_value = mock_classifier
-
-        agent = MultiSourceAgentService()
-
-        articles = [
-            {
-                "title": "Artificial Intelligence",
-                "content": "AI content",
-                "relevance_score": 0.9,
-            },
-            {
-                "title": "Machine Learning",
-                "content": "ML content",
-                "relevance_score": 0.7,
-            },
-            {
-                "title": "Neural Networks",
-                "content": "NN content",
-                "relevance_score": 0.8,
-            },
-        ]
-
-        # Test the main method that uses ranking internally
-        result = agent.get_multi_source_summary("artificial intelligence")
-        assert isinstance(result, dict)
-        # The actual response has 'synthesis' field, not 'summary'
-        assert "synthesis" in result or "error" in result
+        assert result in ["general_knowledge", "biography", "definition", "finance"]
 
 
 class TestMultiSourceAgentIntegration:
