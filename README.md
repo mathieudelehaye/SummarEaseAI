@@ -17,7 +17,7 @@
 ## 🌐 Live Application
 
 ### 🎯 **Frontend Application**
-**Live URL**: [https://summarease-frontend--pmhy95g.wittyflower-c2822a5a.eastus.azurecontainerapps.io](https://summarease-frontend.onrender.com/)
+**Live URL**: https://summarease-frontend.onrender.com
 
 ### 🤖 **Backend API**
 **Live URL**: https://mdelehaye-summarease-backend.hf.space
