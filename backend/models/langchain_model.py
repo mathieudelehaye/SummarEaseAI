@@ -91,8 +91,20 @@ class LangChainAgentsService:
 
         if LANGCHAIN_AVAILABLE and self.llm_client.check_openai_availability():
             try:
-                self.query_enhancement_agent = QueryEnhancementAgent()
-                self.article_selection_agent = ArticleSelectionAgent()
+                # Create shared LLM once
+                from langchain.chat_models import ChatOpenAI
+                from backend.models.openai_summarizer_model import get_openai_api_key
+
+                api_key = get_openai_api_key()
+                shared_llm = ChatOpenAI(
+                    api_key=api_key,
+                    model="gpt-3.5-turbo",
+                    temperature=0.3
+                )
+
+                # Pass shared LLM to both agents
+                self.query_enhancement_agent = QueryEnhancementAgent(shared_llm)
+                self.article_selection_agent = ArticleSelectionAgent(shared_llm)
                 logger.info("✅ LangChain Agents Service initialized successfully")
             except (ImportError, ValueError, AttributeError, OSError) as e:
                 logger.error("❌ Failed to initialize LangChain agents: %s", str(e))
@@ -267,11 +279,11 @@ class LangChainAgentsService:
 class QueryEnhancementAgent:
     """LangChain agent for query enhancement"""
 
-    def __init__(self):
+    def __init__(self, llm):
+        self.llm = llm
         if not LANGCHAIN_AVAILABLE:
             raise ImportError("LangChain not available")
 
-        self.llm = get_llm_client()
         self._initialize_agent()
 
     def _initialize_agent(self):
@@ -361,11 +373,11 @@ class QueryEnhancementAgent:
 class ArticleSelectionAgent:
     """LangChain agent for article selection"""
 
-    def __init__(self):
+    def __init__(self, llm):
         if not LANGCHAIN_AVAILABLE:
             raise ImportError("LangChain not available")
+        self.llm = llm
 
-        self.llm = get_llm_client()
         self._initialize_agent()
 
     def _initialize_agent(self):
