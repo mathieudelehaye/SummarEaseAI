@@ -7,7 +7,7 @@ Main orchestration service with rate limiting and cost control
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import wikipedia
 from dotenv import load_dotenv
@@ -164,6 +164,12 @@ class MultiSourceAgentService:
 
         # Step 2: Generate search queries
         search_queries = self._generate_search_queries(user_query, detected_intent)
+        if not search_queries:
+            logger.warning("⚠️ No valid search queries generated")
+            return self._create_error_response(
+                "No valid search queries generated", user_query, detected_intent
+            )
+
         logger.info("🔍 Generated %s search queries", len(search_queries))
 
         # Step 3: Search and gather articles
@@ -229,9 +235,24 @@ class MultiSourceAgentService:
             return "historical_event"
         return "general_knowledge"
 
-    def _generate_search_queries(self, user_query: str, intent: str) -> List[str]:
+    def _generate_search_queries(self, user_query: str, intent: str) -> Optional[List[str]]:
         """Generate search queries using various methods"""
         queries = [user_query]  # Always include original query
+
+        # First validate if the query is likely to find Wikipedia articles
+        try:
+            from backend.models.query_expansion_model import WikipediaQueryViability
+            validation_result = self.services["query_generator"].validate_wikipedia_query(user_query)
+
+            if validation_result == WikipediaQueryViability.VERY_UNLIKELY:
+                logger.warning("⚠️ Query unlikely to find Wikipedia articles: '%s'", user_query)
+                logger.info("🔄 Skipping query enhancement and secondary query generation")
+                return None
+
+            logger.info("✅ Query validation passed, proceeding with enhancements")
+
+        except Exception as e:
+            logger.warning("⚠️ Query validation failed: %s, proceeding anyway", str(e))
 
         # Use enhanced query based on intent
         # Initialize Wikipedia service

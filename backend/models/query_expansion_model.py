@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from backend.models.llm_client import get_llm_client
+from enum import Enum
 
 # Common exceptions for service error handling
 COMMON_SERVICE_EXCEPTIONS = (
@@ -39,6 +40,11 @@ except ImportError:
     logger.warning(
         "LangChain ChatOpenAI not available - using fallback query generation"
     )
+
+
+class WikipediaQueryViability(Enum):
+    VERY_LIKELY = "Very likely"
+    VERY_UNLIKELY = "Very unlikely"
 
 
 class OpenAIQueryGenerationService:
@@ -111,6 +117,54 @@ class OpenAIQueryGenerationService:
             return self._openai_query_generation(primary_query, intent, max_queries)
         return self._fallback_query_generation(primary_query, intent, max_queries)
 
+    def validate_wikipedia_query(self, user_query: str) ->   WikipediaQueryViability:
+        """
+        Validate if a user query is likely to find relevant Wikipedia articles
+
+        Args:
+            user_query: The user's question to validate
+
+        Returns:
+            WikipediaQueryViability enum indicating if query is likely to succeed
+        """
+        if not self.llm_client.check_openai_availability():
+            logger.warning("⚠️ OpenAI not available for query validation, assuming VERY_LIKELY")
+            return WikipediaQueryViability.VERY_LIKELY
+
+        try:
+            logger.info("🔍 Validating Wikipedia query viability for: '%s'", user_query)
+
+            validation_prompt = f"""If I look for an answer to the following question in Wikipedia will I find any related article: "{user_query}". Return ONLY a string which can be matched to an enum variable with two possible values: Very likely, Very unlikely"""
+
+            logger.info("🔧 Calling OpenAI for query validation...")
+            response = self.llm_client.call_openai_chat(validation_prompt, max_tokens=10)
+
+            if not response:
+                logger.warning("⚠️ Empty response from OpenAI validation,assuming VERY_LIKELY")
+                return WikipediaQueryViability.VERY_LIKELY
+
+            # Clean and parse response
+            response_text = response.strip().lower()
+            logger.info("🔍 OpenAI validation response: '%s'", response)
+
+            # Match response to enum values
+            if "very likely" in response_text:
+                result = WikipediaQueryViability.VERY_LIKELY
+                logger.info("✅ Query validation result: VERY_LIKELY")
+                return result
+            elif "very unlikely" in response_text:
+                result = WikipediaQueryViability.VERY_UNLIKELY
+                logger.info("⚠️ Query validation result: VERY_UNLIKELY")
+                return result
+            else:
+                logger.warning("⚠️ Unexpected validation response: '%s', assuming VERY_LIKELY", response)
+                return WikipediaQueryViability.VERY_LIKELY
+
+        except Exception as e:
+            logger.error("❌ Error in Wikipedia query validation: %s", str(e))
+            logger.info("🔄 Assuming VERY_LIKELY due to validation error")
+            return WikipediaQueryViability.VERY_LIKELY
+
     def _openai_query_generation(
         self, primary_query: str, intent: str, max_queries: int
     ) -> Dict[str, List[str]]:
@@ -119,13 +173,12 @@ class OpenAIQueryGenerationService:
             logger.info("🔧 Starting OpenAI query generation for: %s (intent: %s)", primary_query, intent)
             # Intent-specific prompts for better query generation
             intent_strategies = {
-                "History": "historical events, key figures, timeline, causes and effects",
-                "Science": "scientific principles, research, discoveries, applications",
-                "Technology": "innovations, development, applications, impact",
-                "Biography": "life events, achievements, influence, personal background",
-                "Music": "musical style, albums, influence, band members, career",
-                "Sports": "competitions, achievements, rules, history",
-                "Finance": "economic impact, market influence, financial aspects",
+                "history": "historical events, key figures, timeline, causes and effects",
+                "science": "scientific principles, research, discoveries, applications",
+                "technology": "innovations, development, applications, impact",
+                "music": "musical style, albums, influence, band members, career",
+                "sports": "competitions, achievements, rules, history",
+                "finance": "economic impact, market influence, financial aspects",
             }
 
             strategy = intent_strategies.get(intent, "comprehensive information")
