@@ -7,11 +7,12 @@ Handles all Wikipedia content fetching and processing
 import logging
 import re
 import sys
+import wikipedia
+import wikipediaapi
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import wikipedia
-import wikipediaapi
+from .intent_data import INTENT_ENHANCEMENTS
 
 # Add project root to path
 repo_root = Path(__file__).resolve().parent.parent.parent
@@ -392,100 +393,7 @@ class WikipediaService:
             return query
 
         # Intent-based query enhancement patterns
-        intent_enhancements = {
-            "Science": {
-                "keywords": [
-                    "quantum",
-                    "physics",
-                    "chemistry",
-                    "biology",
-                    "scientific",
-                    "theory",
-                    "principle",
-                ],
-                "suffixes": [
-                    "theory",
-                    "principles",
-                ],  # More specific than just 'science'
-            },
-            "History": {
-                "keywords": [
-                    "war",
-                    "battle",
-                    "historical",
-                    "timeline",
-                    "events",
-                    "period",
-                    "ancient",
-                ],
-                "suffixes": ["history", "timeline"],
-            },
-            "Biography": {
-                "keywords": [
-                    "biography",
-                    "life",
-                    "who was",
-                    "born",
-                    "died",
-                    "achievements",
-                ],
-                "suffixes": ["biography", "life"],
-            },
-            "Technology": {
-                "keywords": [
-                    "technology",
-                    "innovation",
-                    "development",
-                    "advancement",
-                    "computer",
-                    "software",
-                ],
-                "suffixes": ["technology", "innovation"],
-            },
-            "Sports": {
-                "keywords": [
-                    "sports",
-                    "game",
-                    "competition",
-                    "tournament",
-                    "olympics",
-                    "team",
-                ],
-                "suffixes": ["sports", "game"],
-            },
-            "Arts": {
-                "keywords": [
-                    "art",
-                    "artistic",
-                    "cultural",
-                    "creative",
-                    "painting",
-                    "music",
-                ],
-                "suffixes": ["art", "culture"],
-            },
-            "Politics": {
-                "keywords": [
-                    "political",
-                    "government",
-                    "policy",
-                    "democracy",
-                    "election",
-                ],
-                "suffixes": ["politics", "government"],
-            },
-            "Geography": {
-                "keywords": [
-                    "geographic",
-                    "location",
-                    "region",
-                    "country",
-                    "city",
-                    "mountain",
-                ],
-                "suffixes": ["geography", "location"],
-            },
-        }
+        intent_enhancements = INTENT_ENHANCEMENTS
 
         if intent in intent_enhancements:
             enhancement = intent_enhancements[intent]
