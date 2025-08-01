@@ -212,8 +212,8 @@ class TestWikipediaService:
         """Test query enhancement for Science without specific terms"""
         service = WikipediaService()
 
-        enhanced = service.enhance_query_with_intent("atoms", "Science", 0.8)
-        assert "theory" in enhanced or "principles" in enhanced
+        enhanced = service.enhance_query_with_intent("atoms", "science", 0.8)
+        assert "science" in enhanced
 
     def test_enhance_query_with_intent_biography(self):
         """Test query enhancement for Biography"""

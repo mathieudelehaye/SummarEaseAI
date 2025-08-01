@@ -48,26 +48,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-def parse_summary_output(text: str) -> str:
-    """Parse the output from the LLM"""
-    # Clean up the response
-    summary = text.strip()
-
-    # Remove any unwanted prefixes
-    prefixes_to_remove = [
-        "Summary:",
-        "Here's a summary:",
-        "Here is a summary:",
-        "The summary is:",
-    ]
-
-    for prefix in prefixes_to_remove:
-        if summary.lower().startswith(prefix.lower()):
-            summary = summary[len(prefix) :].strip()
-
-    return summary
-
-
 class SummaryOutputParser(BaseOutputParser):
     """Custom output parser for summary responses"""
     
@@ -282,93 +262,86 @@ def create_intent_aware_chain(intent: str, confidence: float):
 
         # Intent-specific prompt templates
         intent_prompts = {
-            "Science": """
+            "science": """
             Please provide a comprehensive scientific summary of the following article.
-            Focus on: scientific principles, theories, mechanisms, research findings, and discoveries.
-            Explain complex concepts in an accessible way while maintaining scientific accuracy.
-            Include key discoveries, methodologies, and the scientific significance of the topic.
-            
+            Focus on: scientific principles, theories, mechanisms, research findings,
+        and discoveries.
+            Explain complex concepts in an accessible way while maintaining scientific
+        accuracy.
+            Include key discoveries, methodologies, and the scientific significance of
+        the topic.
+
             Article Content:
             {article_text}
-            
+
             Scientific Summary:
             """,
-            "History": """
+            "history": """
             Please provide a comprehensive historical summary of the following article.
-            Focus on: key historical events, timeline, important figures, causes and effects.
-            Emphasize the historical significance, context, and impact on subsequent events.
+            Focus on: key historical events, timeline, important figures, causes and
+        effects.
+            Emphasize the historical significance, context, and impact on subsequent
+        events.
             Include dates, locations, and the broader historical context.
-            
+
             Article Content:
             {article_text}
-            
+
             Historical Summary:
             """,
-            "Biography": """
-            Please provide a comprehensive biographical summary of the following article.
-            Focus on: life story, major achievements, career milestones, personal background.
-            Emphasize key contributions, impact on their field, and historical significance.
-            Include birth/death dates, education, career progression, and legacy.
-            
+            "music": """
+            Please provide a comprehensive music summary of the following article.
+            Focus on: musical style, band/artist history, album releases, cultural
+        impact, and musical influence.
+            Emphasize musical innovations, genre contributions, career highlights, and
+        legacy.
+            Include formation dates, key members, notable songs/albums, and impact on
+        music history.
+
             Article Content:
             {article_text}
-            
-            Biographical Summary:
+
+            Music Summary:
             """,
-            "Technology": """
+            "technology": """
             Please provide a comprehensive technology summary of the following article.
-            Focus on: technological innovations, development process, applications, and impact.
-            Explain how the technology works, its advantages, limitations, and future potential.
-            Include technical specifications, adoption timeline, and industry significance.
-            
+            Focus on: technological innovations, development process, applications, and
+        impact.
+            Explain how the technology works, its advantages, limitations, and future
+        potential.
+            Include technical specifications, adoption timeline, and industry
+        significance.
+
             Article Content:
             {article_text}
-            
+
             Technology Summary:
             """,
-            "Sports": """
+            "sports": """
             Please provide a comprehensive sports summary of the following article.
-            Focus on: game rules, competition history, notable athletes, records and achievements.
+            Focus on: game rules, competition history, notable athletes, records and
+        achievements.
             Emphasize sporting significance, competition formats, and cultural impact.
             Include key statistics, memorable moments, and the sport's evolution.
-            
+
             Article Content:
             {article_text}
-            
+
             Sports Summary:
             """,
-            "Arts": """
-            Please provide a comprehensive arts and culture summary of the following article.
-            Focus on: artistic movements, creative techniques, cultural significance, and influence.
-            Emphasize aesthetic qualities, historical context, and impact on art/culture.
-            Include artistic style, medium, period, and cultural relevance.
-            
+            "finance": """
+            Please provide a comprehensive finance summary of the following article.
+            Focus on: financial concepts, market mechanisms, economic impact, and
+        monetary systems.
+            Emphasize financial significance, market effects, investment implications,
+        and economic context.
+            Include key figures, financial metrics, market trends, and economic
+        consequences.
+
             Article Content:
             {article_text}
-            
-            Arts & Culture Summary:
-            """,
-            "Politics": """
-            Please provide a comprehensive political summary of the following article.
-            Focus on: political systems, policies, governance, and political figures.
-            Emphasize political significance, policy implications, and governmental impact.
-            Include political context, institutional roles, and policy outcomes.
-            
-            Article Content:
-            {article_text}
-            
-            Political Summary:
-            """,
-            "Geography": """
-            Please provide a comprehensive geographic summary of the following article.
-            Focus on: location, physical features, climate, population, and geographical significance.
-            Emphasize geographical characteristics, environmental aspects, and spatial relationships.
-            Include coordinates, regional context, and geographical importance.
-            
-            Article Content:
-            {article_text}
-            
-            Geographic Summary:
+
+            Finance Summary:
             """,
         }
 
@@ -409,74 +382,3 @@ def create_intent_aware_chain(intent: str, confidence: float):
     except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
         logger.error("Error creating intent-aware summarization chain: %s", str(e))
         return None
-
-
-def get_summarization_status() -> dict:
-    """Get the status of summarization capabilities"""
-    return {
-        "langchain_available": LANGCHAIN_AVAILABLE,
-        "openai_api_key_configured": get_openai_api_key() is not None,
-        "summarization_ready": LANGCHAIN_AVAILABLE and get_openai_api_key() is not None,
-    }
-
-
-class OpenAISummarizerModel:
-    """
-    OpenAI Summarizer Model Class
-    Encapsulates all OpenAI API interactions for summarization
-    Pure data access layer - no business logic
-    """
-
-    def __init__(self):
-        self.langchain_available = LANGCHAIN_AVAILABLE
-        self.api_key = get_openai_api_key()
-
-    def is_ready(self) -> bool:
-        """Check if the model is ready for use"""
-        return self.langchain_available and self.api_key is not None
-
-    def get_status(self) -> dict:
-        """Get model status"""
-        return get_summarization_status()
-
-    def estimate_tokens(self, text: str) -> int:
-        """Estimate token count for text"""
-        return estimate_tokens(text)
-
-    def sanitize_text(self, text: str) -> str:
-        """Sanitize text for safe processing"""
-        return sanitize_article_text(text)
-
-    def chunk_text(self, text: str, max_chunk_tokens: int = 12000) -> List[str]:
-        """Chunk text for processing"""
-        return chunk_text_for_openai(text, max_chunk_tokens)
-
-    def create_basic_chain(self):
-        """Create basic summarization chain"""
-        return create_summarization_chain()
-
-    def create_line_limited_chain(self, max_lines: int = 30):
-        """Create line-limited summarization chain"""
-        return create_line_limited_chain(max_lines)
-
-    def create_intent_chain(self, intent: str, confidence: float):
-        """Create intent-aware summarization chain"""
-        return create_intent_aware_chain(intent, confidence)
-
-
-class OpenAISummarizerModelSingleton:
-    """Singleton class for OpenAI Summarizer Model"""
-
-    _instance = None
-
-    @classmethod
-    def get_instance(cls) -> OpenAISummarizerModel:
-        """Get or create the singleton instance"""
-        if cls._instance is None:
-            cls._instance = OpenAISummarizerModel()
-        return cls._instance
-
-
-def get_openai_summarizer_model() -> OpenAISummarizerModel:
-    """Get or create global OpenAI summarizer model instance"""
-    return OpenAISummarizerModelSingleton.get_instance()
