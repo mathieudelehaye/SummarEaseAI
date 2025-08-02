@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import wikipedia
+from langchain.chat_models import ChatOpenAI
+
+from backend.models.openai_summarizer_model import get_openai_api_key
 
 from .llm_client import get_llm_client
 
@@ -92,14 +95,9 @@ class LangChainAgentsService:
         if LANGCHAIN_AVAILABLE and self.llm_client.check_openai_availability():
             try:
                 # Create shared LLM once
-                from langchain.chat_models import ChatOpenAI
-                from backend.models.openai_summarizer_model import get_openai_api_key
-
                 api_key = get_openai_api_key()
                 shared_llm = ChatOpenAI(
-                    api_key=api_key,
-                    model="gpt-3.5-turbo",
-                    temperature=0.3
+                    api_key=api_key, model="gpt-3.5-turbo", temperature=0.3
                 )
 
                 # Pass shared LLM to both agents

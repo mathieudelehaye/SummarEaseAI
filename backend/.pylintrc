@@ -14,6 +14,9 @@ disable=
     W0511,  # TODO/FIXME in comments
     C0412,  # Ungrouped imports (langchain_openai is separate from langchain)
     astroid-error,  # Disable astroid errors (like recursion issues with complex libraries)
+    W0718,   # Catching too general exception Exception
+    R0914,   # Too many local variables
+    R0915,   # Too many statements
 
 [TYPECHECK]
 generated-members=

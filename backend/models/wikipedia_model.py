@@ -7,10 +7,11 @@ Handles all Wikipedia content fetching and processing
 import logging
 import re
 import sys
-import wikipedia
-import wikipediaapi
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+import wikipedia
+import wikipediaapi
 
 from .intent_data import INTENT_ENHANCEMENTS
 
@@ -237,7 +238,9 @@ class WikipediaService:
 
             # Use wikipedia library for better search functionality
             try:
-                search_results = wikipedia.search(processed_query, results=max_results + 2)
+                search_results = wikipedia.search(
+                    processed_query, results=max_results + 2
+                )
             except Exception as search_error:
                 logger.error("Error in Wikipedia search: %s", str(search_error))
                 return None
@@ -559,7 +562,9 @@ class WikipediaService:
                 search_results = wikipedia.search(processed_query, results=max_results)
             except Exception as search_error:
                 logger.error(
-                    "❌ Error in Wikipedia search for '%s': %s", processed_query, str(search_error)
+                    "❌ Error in Wikipedia search for '%s': %s",
+                    processed_query,
+                    str(search_error),
                 )
                 # Fallback to basic search
                 logger.info("🔄 Falling back to basic Wikipedia search")

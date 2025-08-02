@@ -133,8 +133,9 @@ class TestLLMClientSingleton:
         """Test that get_llm_client returns same instance"""
         # Reset singleton instance
         from backend.models.llm_client import _LLMClientSingleton
+
         _LLMClientSingleton._instance = None
-        
+
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
             client1 = get_llm_client()
             client2 = get_llm_client()
@@ -145,8 +146,9 @@ class TestLLMClientSingleton:
         """Test that singleton returns correct type"""
         # Reset singleton instance
         from backend.models.llm_client import _LLMClientSingleton
+
         _LLMClientSingleton._instance = None
-        
+
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
             client = get_llm_client()
             assert isinstance(client, LLMClient)

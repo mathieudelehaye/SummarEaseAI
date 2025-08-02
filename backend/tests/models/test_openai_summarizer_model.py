@@ -114,7 +114,9 @@ class TestChainCreation:
     @patch("backend.models.openai_summarizer_model.ChatOpenAI")
     @patch("backend.models.openai_summarizer_model.LLMChain")
     @patch("backend.models.openai_summarizer_model.PromptTemplate")
-    def test_create_line_limited_chain(self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key):
+    def test_create_line_limited_chain(
+        self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key
+    ):
         """Test line-limited chain creation"""
         mock_get_key.return_value = "test-key"
         mock_llm = Mock()
@@ -132,7 +134,9 @@ class TestChainCreation:
     @patch("backend.models.openai_summarizer_model.ChatOpenAI")
     @patch("backend.models.openai_summarizer_model.LLMChain")
     @patch("backend.models.openai_summarizer_model.PromptTemplate")
-    def test_create_intent_aware_chain_science(self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key):
+    def test_create_intent_aware_chain_science(
+        self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key
+    ):
         """Test intent-aware chain creation for Science"""
         mock_get_key.return_value = "test-key"
         mock_llm = Mock()
@@ -177,7 +181,7 @@ class TestErrorHandling:
 
         # Should fall back to simple chunking
         result = chunk_text_for_openai("test text", 1000)
-        
+
         # Should return a list with the original text
         assert isinstance(result, list)
         assert len(result) > 0

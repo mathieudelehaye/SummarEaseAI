@@ -10,4 +10,4 @@ Write-Output "Formatting code with black..."
 black .
 
 Write-Output "Running pylint checks..."
-pylint .
+pylint --rcfile=.pylintrc .

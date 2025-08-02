@@ -13,15 +13,19 @@ from transformers import pipeline
 # LangChain imports
 try:
     from langchain_openai import ChatOpenAI
+
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     try:
         from langchain.chat_models import ChatOpenAI
+
         LANGCHAIN_AVAILABLE = True
     except ImportError:
         LANGCHAIN_AVAILABLE = False
         ChatOpenAI = None
-        logging.warning("LangChain not available. Some LLM functionality will be limited.")
+        logging.warning(
+            "LangChain not available. Some LLM functionality will be limited."
+        )
 
 # Load environment variables
 load_dotenv()
@@ -32,7 +36,12 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     """Raw LLM API utilities with no business logic"""
 
-    def __init__(self, model: str = "gpt-3.5-turbo", temperature: float = 0.7, max_tokens: int = 1500):
+    def __init__(
+        self,
+        model: str = "gpt-3.5-turbo",
+        temperature: float = 0.7,
+        max_tokens: int = 1500,
+    ):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -61,10 +70,10 @@ class LLMClient:
         """
         if not self.api_key:
             return "Error: OpenAI API key not configured"
-        
+
         if not prompt.strip():
             return "Error: Empty prompt provided"
-            
+
         try:
             if LANGCHAIN_AVAILABLE and ChatOpenAI:
                 # Use LangChain ChatOpenAI
@@ -76,15 +85,15 @@ class LLMClient:
                 )
                 response = llm.invoke(prompt)
                 return response.content.strip()
-            else:
-                # Fallback to raw OpenAI API
-                response = openai.ChatCompletion.create(
-                    model=model or self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=temperature or self.temperature,
-                    max_tokens=max_tokens or self.max_tokens,
-                )
-                return response.choices[0].message.content.strip()
+
+            # Fallback to raw OpenAI API
+            response = openai.ChatCompletion.create(
+                model=model or self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature or self.temperature,
+                max_tokens=max_tokens or self.max_tokens,
+            )
+            return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error("OpenAI API call failed: %s", str(e))
             return f"Error calling OpenAI: {str(e)}"
@@ -112,7 +121,7 @@ class LLMClient:
         """
         if not self.api_key:
             return "Error: OpenAI API key not configured"
-            
+
         try:
             if LANGCHAIN_AVAILABLE and ChatOpenAI:
                 # Use LangChain ChatOpenAI with system message
@@ -126,18 +135,18 @@ class LLMClient:
                 formatted_prompt = f"System: {system_message}\n\nUser: {user_prompt}"
                 response = llm.invoke(formatted_prompt)
                 return response.content.strip()
-            else:
-                # Fallback to raw OpenAI API
-                response = openai.ChatCompletion.create(
-                    model=model or self.model,
-                    messages=[
-                        {"role": "system", "content": system_message},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=temperature or self.temperature,
-                    max_tokens=max_tokens or self.max_tokens,
-                )
-                return response.choices[0].message.content.strip()
+
+            # Fallback to raw OpenAI API
+            response = openai.ChatCompletion.create(
+                model=model or self.model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature or self.temperature,
+                max_tokens=max_tokens or self.max_tokens,
+            )
+            return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error("OpenAI API call with system message failed: %s", str(e))
             return f"Error: {str(e)}"

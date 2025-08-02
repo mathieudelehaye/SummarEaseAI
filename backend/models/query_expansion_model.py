@@ -5,12 +5,13 @@ Moved from utils/openai_query_generator.py to proper services layer
 
 import json
 import logging
+import os
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List
 
 from backend.models.llm_client import get_llm_client
-from enum import Enum
 
 # Common exceptions for service error handling
 COMMON_SERVICE_EXCEPTIONS = (
@@ -59,19 +60,22 @@ class OpenAIQueryGenerationService:
 
         logger.info("🔧 Initializing OpenAI Query Generation Service...")
         logger.info("🔧 LANGCHAIN_AVAILABLE: %s", LANGCHAIN_AVAILABLE)
-        logger.info("🔧 OpenAI availability check: %s", self.llm_client.check_openai_availability())
+        logger.info(
+            "🔧 OpenAI availability check: %s",
+            self.llm_client.check_openai_availability(),
+        )
 
         if LANGCHAIN_AVAILABLE and self.llm_client.check_openai_availability():
             try:
                 logger.info("🔧 Creating ChatOpenAI instance...")
                 # Pass the API key explicitly to ensure it's available
-                import os
+
                 api_key = os.getenv("OPENAI_API_KEY")
                 if not api_key:
                     logger.error("❌ OPENAI_API_KEY not found in environment")
                     self.llm = None
                     return
-                    
+
                 self.llm = ChatOpenAI(
                     openai_api_key=api_key,
                     model="gpt-3.5-turbo",
@@ -83,7 +87,9 @@ class OpenAIQueryGenerationService:
                 )
             except (ImportError, ValueError, AttributeError, OSError) as e:
                 logger.error(
-                    "❌ Failed to initialize OpenAI query generation: %s", str(e), exc_info=True
+                    "❌ Failed to initialize OpenAI query generation: %s",
+                    str(e),
+                    exc_info=True,
                 )
                 self.llm = None
         else:
@@ -112,12 +118,14 @@ class OpenAIQueryGenerationService:
             intent,
         )
 
-        logger.info("🔧 LLM status: %s", "Available" if self.llm else "None - using fallback")
+        logger.info(
+            "🔧 LLM status: %s", "Available" if self.llm else "None - using fallback"
+        )
         if self.llm:
             return self._openai_query_generation(primary_query, intent, max_queries)
         return self._fallback_query_generation(primary_query, intent, max_queries)
 
-    def validate_wikipedia_query(self, user_query: str) ->   WikipediaQueryViability:
+    def validate_wikipedia_query(self, user_query: str) -> WikipediaQueryViability:
         """
         Validate if a user query is likely to find relevant Wikipedia articles
 
@@ -128,19 +136,30 @@ class OpenAIQueryGenerationService:
             WikipediaQueryViability enum indicating if query is likely to succeed
         """
         if not self.llm_client.check_openai_availability():
-            logger.warning("⚠️ OpenAI not available for query validation, assuming VERY_LIKELY")
+            logger.warning(
+                "⚠️ OpenAI not available for query validation, assuming VERY_LIKELY"
+            )
             return WikipediaQueryViability.VERY_LIKELY
 
         try:
             logger.info("🔍 Validating Wikipedia query viability for: '%s'", user_query)
 
-            validation_prompt = f"""If I look for an answer to the following question in Wikipedia will I find any related article: "{user_query}". Return ONLY a string which can be matched to an enum variable with two possible values: Very likely, Very unlikely"""
+            validation_prompt = (
+                "If I look for an answer to the following question in Wikipedia will I "
+                f'find any related article: "{user_query}". '
+                "Return ONLY a string which can be matched to an enum variable with "
+                "two possible values: Very likely, Very unlikely"
+            )
 
             logger.info("🔧 Calling OpenAI for query validation...")
-            response = self.llm_client.call_openai_chat(validation_prompt, max_tokens=10)
+            response = self.llm_client.call_openai_chat(
+                validation_prompt, max_tokens=10
+            )
 
             if not response:
-                logger.warning("⚠️ Empty response from OpenAI validation,assuming VERY_LIKELY")
+                logger.warning(
+                    "⚠️ Empty response from OpenAI validation,assuming VERY_LIKELY"
+                )
                 return WikipediaQueryViability.VERY_LIKELY
 
             # Clean and parse response
@@ -152,13 +171,17 @@ class OpenAIQueryGenerationService:
                 result = WikipediaQueryViability.VERY_LIKELY
                 logger.info("✅ Query validation result: VERY_LIKELY")
                 return result
-            elif "very unlikely" in response_text:
+
+            if "very unlikely" in response_text:
                 result = WikipediaQueryViability.VERY_UNLIKELY
                 logger.info("⚠️ Query validation result: VERY_UNLIKELY")
                 return result
-            else:
-                logger.warning("⚠️ Unexpected validation response: '%s', assuming VERY_LIKELY", response)
-                return WikipediaQueryViability.VERY_LIKELY
+
+            logger.warning(
+                "⚠️ Unexpected validation response: '%s', assuming VERY_LIKELY",
+                response,
+            )
+            return WikipediaQueryViability.VERY_LIKELY
 
         except Exception as e:
             logger.error("❌ Error in Wikipedia query validation: %s", str(e))
@@ -170,7 +193,11 @@ class OpenAIQueryGenerationService:
     ) -> Dict[str, List[str]]:
         """Generate queries using OpenAI/LangChain"""
         try:
-            logger.info("🔧 Starting OpenAI query generation for: %s (intent: %s)", primary_query, intent)
+            logger.info(
+                "🔧 Starting OpenAI query generation for: %s (intent: %s)",
+                primary_query,
+                intent,
+            )
             # Intent-specific prompts for better query generation
             intent_strategies = {
                 "history": "historical events, key figures, timeline, causes and effects",
@@ -212,7 +239,9 @@ class OpenAIQueryGenerationService:
                 queries = json.loads(response.strip())
                 if isinstance(queries, list):
                     logger.info(
-                        "✅ Generated %d secondary queries using OpenAI: %s", len(queries), queries
+                        "✅ Generated %d secondary queries using OpenAI: %s",
+                        len(queries),
+                        queries,
                     )
                     return {
                         "queries": queries[:max_queries],
@@ -220,11 +249,14 @@ class OpenAIQueryGenerationService:
                         "intent_strategy": strategy,
                         "confidence": 0.9,
                     }
-                else:
-                    logger.warning("OpenAI response is not a list: %s", type(queries))
+
+                logger.warning("OpenAI response is not a list: %s", type(queries))
             except json.JSONDecodeError as e:
-                logger.warning("Failed to parse OpenAI JSON response: %s. Raw response: %s", 
-                              str(e), response.strip()[:200])
+                logger.warning(
+                    "Failed to parse OpenAI JSON response: %s. Raw response: %s",
+                    str(e),
+                    response.strip()[:200],
+                )
 
         except COMMON_SERVICE_EXCEPTIONS as e:
             logger.error("OpenAI query generation failed: %s", str(e), exc_info=True)

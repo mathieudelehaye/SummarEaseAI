@@ -1,7 +1,9 @@
+from typing import Any, Dict, Optional, Tuple
 
-from typing import Any, Dict, Tuple, Optional
 
-def validate_summarize_request(data: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], int]]:
+def validate_summarize_request(
+    data: Dict[str, Any],
+) -> Optional[Tuple[Dict[str, Any], int]]:
     """
     Validate single-source summarization request.
     Returns (error dict, status code) if invalid, None if valid.
@@ -20,7 +22,9 @@ def validate_summarize_request(data: Dict[str, Any]) -> Optional[Tuple[Dict[str,
     return None
 
 
-def validate_multi_source_request(data: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], int]]:
+def validate_multi_source_request(
+    data: Dict[str, Any],
+) -> Optional[Tuple[Dict[str, Any], int]]:
     """
     Validate multi-source summarization request.
     Returns (error dict, status code) if invalid, None if valid.
@@ -43,4 +47,3 @@ def validate_multi_source_request(data: Dict[str, Any]) -> Optional[Tuple[Dict[s
         return {"error": "cost_mode must be MINIMAL, BALANCED, or COMPREHENSIVE"}, 400
 
     return None
-

@@ -50,12 +50,12 @@ logger = logging.getLogger(__name__)
 
 class SummaryOutputParser(BaseOutputParser):
     """Custom output parser for summary responses"""
-    
+
     def parse(self, text: str) -> str:
         """Parse the output from the LLM"""
         # Clean up the response
         summary = text.strip()
-        
+
         # Remove any unwanted prefixes
         prefixes_to_remove = [
             "Summary:",
@@ -63,11 +63,11 @@ class SummaryOutputParser(BaseOutputParser):
             "Here is a summary:",
             "The summary is:",
         ]
-        
+
         for prefix in prefixes_to_remove:
             if summary.lower().startswith(prefix.lower()):
-                summary = summary[len(prefix):].strip()
-        
+                summary = summary[len(prefix) :].strip()
+
         return summary
 
 
@@ -139,7 +139,14 @@ def chunk_text_for_openai(text: str, max_chunk_tokens: int = 12000) -> List[str]
             )
 
         return chunks
-    except (ImportError, AttributeError, ValueError, TypeError, OSError, Exception) as e:
+    except (
+        ImportError,
+        AttributeError,
+        ValueError,
+        TypeError,
+        OSError,
+        Exception,
+    ) as e:
         logger.warning(
             "Error using LangChain text splitter, falling back to simple chunking: %s",
             e,

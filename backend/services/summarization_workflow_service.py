@@ -13,7 +13,6 @@ from ..models.openai_summarizer_model import (
     chunk_text_for_openai,
     create_intent_aware_chain,
     create_line_limited_chain,
-    create_summarization_chain,
     estimate_tokens,
     get_openai_api_key,
     sanitize_article_text,
@@ -48,26 +47,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def parse_summary_output(text: str) -> str:
-    """Parse the output from the LLM"""
-    # Clean up the response
-    summary = text.strip()
-
-    # Remove any unwanted prefixes
-    prefixes_to_remove = [
-        "Summary:",
-        "Here's a summary:",
-        "Here is a summary:",
-        "The summary is:",
-    ]
-
-    for prefix in prefixes_to_remove:
-        if summary.lower().startswith(prefix.lower()):
-            summary = summary[len(prefix) :].strip()
-
-    return summary
-
-
 def log_chatgpt_request(
     prompt_template: str, article_text: str, chunk_number: int = None
 ):
@@ -91,116 +70,6 @@ def log_chatgpt_request(
         logger.info("📄 FULL PROMPT: %s", full_prompt)
 
     logger.info("=" * 80)
-
-
-def _validate_summarization_input(article_text: str) -> str | None:
-    """Validate input for summarization and return error message if invalid."""
-    if not LANGCHAIN_AVAILABLE:
-        return (
-            "Error: LangChain not available. Please install langchain and "
-            "langchain-openai packages."
-        )
-
-    if not article_text or len(article_text.strip()) == 0:
-        return "Error: No article content provided"
-
-    if len(article_text.strip()) < 100:
-        return "Error: Article content too short to summarize effectively"
-
-    return None
-
-
-def _process_chunked_summarization(chain, article_text: str) -> str:
-    """Process long articles that need chunking."""
-    logger.info("Article too long, chunking for processing...")
-    chunks = chunk_text_for_openai(article_text, max_chunk_tokens=12000)
-    summaries = []
-
-    for i, chunk in enumerate(chunks):
-        logger.info("Processing chunk %d/%d", i + 1, len(chunks))
-        safe_chunk = sanitize_article_text(chunk)
-        chunk_summary = chain.run(article_text=safe_chunk)
-        if chunk_summary and chunk_summary.strip():
-            summaries.append(chunk_summary.strip())
-
-    if not summaries:
-        return "Error: No summaries generated from chunks"
-
-    # If we have multiple chunk summaries, combine them
-    if len(summaries) > 1:
-        logger.info("Combining chunk summaries...")
-        combined_text = "\n\n".join(summaries)
-        # Summarize the combined summaries if they're still too long
-        if estimate_tokens(combined_text) > 12000:
-            final_summary = chain.run(
-                article_text=combined_text[: 12000 * 4]
-            )  # Rough char limit
-        else:
-            final_summary = chain.run(article_text=combined_text)
-        return (
-            final_summary.strip()
-            if final_summary
-            else "Error: Final summary generation failed"
-        )
-
-    return summaries[0]
-
-
-def summarize_article(article_text: str) -> str:
-    """
-    Summarize article text using LangChain and OpenAI
-
-    Args:
-        article_text: The article content to summarize
-
-    Returns:
-        Generated summary or error message
-    """
-    # Validate input
-    error = _validate_summarization_input(article_text)
-    if error:
-        return error
-
-    try:
-        chain = create_summarization_chain()
-        if not chain:
-            return (
-                "Error: Could not initialize OpenAI summarization. Check your API key."
-            )
-
-        # Check if text is too long and needs chunking
-        estimated_tokens = estimate_tokens(article_text)
-        logger.info("Estimated tokens in article: %d", estimated_tokens)
-
-        # Log article preview for debugging
-        article_preview = (
-            article_text[:500] + "..." if len(article_text) > 500 else article_text
-        )
-        logger.info("📄 Article content preview (first 500 chars): %s", article_preview)
-
-        if estimated_tokens > 12000:  # Leave room for prompt and completion
-            return _process_chunked_summarization(chain, article_text)
-
-        # Text is short enough, process normally
-        logger.info("Generating summary using OpenAI...")
-        summary = chain.run(article_text=article_text)
-
-        if not summary or len(summary.strip()) == 0:
-            return "Error: Generated summary is empty"
-
-        logger.info("Summary generated successfully")
-        return summary.strip()
-
-    except (
-        ValueError,
-        KeyError,
-        AttributeError,
-        ConnectionError,
-        TimeoutError,
-        TypeError,
-    ) as e:
-        logger.error("Error during summarization: %s", str(e))
-        return f"Error generating summary: {str(e)}"
 
 
 def _validate_line_limited_input(

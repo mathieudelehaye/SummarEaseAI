@@ -4,13 +4,12 @@ Handles summarization requests and coordinates with services
 """
 
 import logging
+from pathlib import Path
+from typing import Any, Dict
 
 # TODO: Move to a separate service or model in the future
 import wikipedia
-
 from dotenv import load_dotenv
-from pathlib import Path
-from typing import Any, Dict
 
 # Import BERT classifier at module level to avoid import-outside-toplevel
 try:
@@ -23,7 +22,10 @@ except ImportError:
 
 # Import MultiSourceAgentService for multi-source summarization
 try:
-    from backend.services.multi_source_agent_service import get_multi_source_agent_service
+    from backend.services.multi_source_agent_service import (
+        get_multi_source_agent_service,
+    )
+
     MULTI_SOURCE_AVAILABLE = True
 except ImportError:
     MULTI_SOURCE_AVAILABLE = False
@@ -254,7 +256,9 @@ class SummarizationController:
     ) -> Dict[str, Any]:
         """Summarize using multi-source approach with agent integration"""
         if not MULTI_SOURCE_AVAILABLE or not get_multi_source_agent_service:
-            logger.warning("MultiSourceAgentService not available, falling back to single source")
+            logger.warning(
+                "MultiSourceAgentService not available, falling back to single source"
+            )
             result = self.summarize_single_source(query, max_lines)
             result["method"] = "single_source_fallback"
             result["agent_powered"] = False
@@ -264,13 +268,13 @@ class SummarizationController:
         try:
             # Get the multi-source agent service
             agent_service = get_multi_source_agent_service()
-            
+
             # Call the agent service with proper parameters (note: uses user_query not query)
             result = agent_service.get_multi_source_summary(
                 user_query=query,
-                user_intent=None  # Let the service detect intent automatically
+                user_intent=None,  # Let the service detect intent automatically
             )
-            
+
             # Ensure proper response format
             if "error" not in result:
                 # Format the response to match expected API format
@@ -287,14 +291,17 @@ class SummarizationController:
                     "cost_tracking": result.get("usage_stats", {}),
                     "summary_length": len(result.get("synthesis", "")),
                     "summary_lines": len(result.get("synthesis", "").split("\n")),
-                    "wikipedia_pages": [article.get("title", "") for article in result.get("individual_summaries", [])]
+                    "wikipedia_pages": [
+                        article.get("title", "")
+                        for article in result.get("individual_summaries", [])
+                    ],
                 }
-                
+
                 logger.info("✅ Multi-source summarization completed with agents")
                 return formatted_result
-            else:
-                return result
-            
+
+            return result
+
         except Exception as e:
             logger.error("❌ Error in multi-source agent summarization: %s", str(e))
             # Fallback to single source on error

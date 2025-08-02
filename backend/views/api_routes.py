@@ -10,14 +10,15 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import Any, Dict
 
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
+from backend.controllers.request_validation import (
+    validate_multi_source_request,
+    validate_summarize_request,
+)
 from backend.controllers.summarization_controller import get_summarization_controller
-from backend.controllers.request_validation import validate_summarize_request, validate_multi_source_request
-
 
 # Configure logging before any other imports
 logging.basicConfig(
@@ -40,10 +41,7 @@ if str(repo_root) not in sys.path:
     logger.info("Added %s to Python path", repo_root)
 
 # Initialize Flask app
-app = Flask(
-    __name__,
-    template_folder=str(Path(__file__).parent.parent / "templates")
-)
+app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
 CORS(app)
 
 # Initialize service with proper constant naming
@@ -80,23 +78,23 @@ def home():
 def status():
     """System status endpoint - delegates to service"""
     system_status = SUMMARIZATION_CONTROLLER.get_system_status()
-    
+
     # Format response to match test expectations
     response = {
         "status": "running",
         "features": system_status.get("features", {}),
         "endpoints": [
             "/status",
-            "/health", 
+            "/health",
             "/intent",
             "/intent_bert",
             "/summarize",
-            "/summarize_multi_source"
+            "/summarize_multi_source",
         ],
         "models": system_status.get("models", {}),
-        "services": system_status.get("services", {})
+        "services": system_status.get("services", {}),
     }
-    
+
     return jsonify(response)
 
 
@@ -104,16 +102,16 @@ def status():
 def health():
     """Health check endpoint - delegates to service"""
     system_status = SUMMARIZATION_CONTROLLER.get_system_status()
-    
+
     # Format response to match test expectations
     response = {
         "status": "healthy",
         "backend": "running",
         "bert_model": system_status.get("models", {}).get("bert", {}),
         "services": system_status.get("services", {}),
-        "timestamp": system_status.get("timestamp", "")
+        "timestamp": system_status.get("timestamp", ""),
     }
-    
+
     return jsonify(response)
 
 
@@ -148,7 +146,7 @@ def intent_bert():
             "text": text,
             "model_loaded": result.get("model_loaded", True),
             "categories_available": result.get("categories_available", []),
-            "gpu_accelerated": result.get("gpu_accelerated", True)
+            "gpu_accelerated": result.get("gpu_accelerated", True),
         }
 
         # Return successful result
@@ -199,7 +197,7 @@ def summarize():
             "method": result.get("method", "single_source"),
             "total_sources": result.get("total_sources", 1),
             "summary_length": result.get("summary_length", 0),
-            "summary_lines": result.get("summary_lines", 0)
+            "summary_lines": result.get("summary_lines", 0),
         }
 
         # Return successful result
@@ -258,7 +256,7 @@ def summarize_multi_source():
             "articles": result.get("articles", []),
             "usage_stats": result.get("usage_stats", {}),
             "cost_tracking": result.get("cost_tracking", {}),
-            "wikipedia_pages": result.get("wikipedia_pages", [])
+            "wikipedia_pages": result.get("wikipedia_pages", []),
         }
 
         logger.info(

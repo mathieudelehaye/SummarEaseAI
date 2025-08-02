@@ -439,7 +439,9 @@ class TestWikipediaServiceIntegration:
 
             assert result["title"] == "Apollo 11"
             assert "{" not in result["content"]  # Should be sanitized
-            assert "(" in result["content"]  # Curly braces should be replaced with parentheses
+            assert (
+                "(" in result["content"]
+            )  # Curly braces should be replaced with parentheses
 
     def test_query_enhancement_workflow(self):
         """Test query enhancement integrated with search"""

@@ -3,17 +3,7 @@ Unit tests for Summarization Controller
 Tests the controller layer business logic
 """
 
-from unittest.mock import Mock, patch
-
-from backend.controllers.summarization_controller import (
-    SummarizationController,
-    get_summarization_controller,
-)
-
-from backend.controllers.request_validation import (
-    validate_multi_source_request,
-    validate_summarize_request,
-)
+from backend.controllers.request_validation import validate_multi_source_request
 
 
 class TestSummarizationController:
@@ -33,9 +23,7 @@ class TestSummarizationController:
         """Test validation with missing query"""
         request_data = {}
 
-        error_response, status_code = validate_multi_source_request(
-            request_data
-        )
+        error_response, status_code = validate_multi_source_request(request_data)
         assert status_code == 400
         assert error_response["error"] == "Missing query parameter"
 
@@ -43,9 +31,7 @@ class TestSummarizationController:
         """Test validation with empty query"""
         request_data = {"query": "   "}
 
-        error_response, status_code = validate_multi_source_request(
-            request_data
-        )
+        error_response, status_code = validate_multi_source_request(request_data)
         assert status_code == 400
         assert error_response["error"] == "Empty query provided"
 
@@ -53,9 +39,7 @@ class TestSummarizationController:
         """Test validation with invalid max_lines"""
         request_data = {"query": "test", "max_lines": 150}  # Too high
 
-        error_response, status_code = validate_multi_source_request(
-            request_data
-        )
+        error_response, status_code = validate_multi_source_request(request_data)
         assert status_code == 400
         assert "max_lines must be between 5 and 100" in error_response["error"]
 
@@ -63,9 +47,7 @@ class TestSummarizationController:
         """Test validation with invalid max_articles"""
         request_data = {"query": "test", "max_articles": 15}  # Too high
 
-        error_response, status_code = validate_multi_source_request(
-            request_data
-        )
+        error_response, status_code = validate_multi_source_request(request_data)
         assert status_code == 400
         assert "max_articles must be between 1 and 10" in error_response["error"]
 
@@ -73,9 +55,7 @@ class TestSummarizationController:
         """Test validation with invalid cost_mode"""
         request_data = {"query": "test", "cost_mode": "INVALID"}
 
-        error_response, status_code = validate_multi_source_request(
-            request_data
-        )
+        error_response, status_code = validate_multi_source_request(request_data)
         assert status_code == 400
         assert (
             "cost_mode must be MINIMAL, BALANCED, or COMPREHENSIVE"

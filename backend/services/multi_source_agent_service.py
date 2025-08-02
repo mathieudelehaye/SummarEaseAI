@@ -13,19 +13,22 @@ import wikipedia
 from dotenv import load_dotenv
 from ml_models.bert_classifier import get_classifier as get_bert_classifier
 
-# Load environment variables from backend/.env
-from pathlib import Path
-backend_dir = Path(__file__).parent.parent
-env_path = backend_dir / ".env"
-load_dotenv(env_path)
-
 from backend.models.langchain_model import get_langchain_agents_service
 from backend.models.llm_client import get_llm_client
-from backend.models.query_expansion_model import get_query_generation_service
+from backend.models.openai_summarizer_model import get_openai_api_key
+from backend.models.query_expansion_model import (
+    WikipediaQueryViability,
+    get_query_generation_service,
+)
 from backend.models.wikipedia_model import WikipediaService
 from backend.services.summarization_workflow_service import (
     summarize_article_with_intent,
 )
+
+# Load environment variables from backend/.env
+backend_dir = Path(__file__).parent.parent
+env_path = backend_dir / ".env"
+load_dotenv(env_path)
 
 # Common exceptions for service error handling
 COMMON_SERVICE_EXCEPTIONS = (
@@ -215,7 +218,7 @@ class MultiSourceAgentService:
         if self.bert_model_loaded:
             try:
                 # Use correct BERT classifier method: predict() returns (intent, confidence)
-                intent, confidence = self.services["bert_classifier"].predict(user_query)
+                intent, _ = self.services["bert_classifier"].predict(user_query)
                 return intent.lower() if intent else "general_knowledge"
             except (ValueError, AttributeError, KeyError, RuntimeError) as e:
                 logger.warning("⚠️ BERT classification failed: %s", str(e))
@@ -235,18 +238,25 @@ class MultiSourceAgentService:
             return "historical_event"
         return "general_knowledge"
 
-    def _generate_search_queries(self, user_query: str, intent: str) -> Optional[List[str]]:
+    def _generate_search_queries(
+        self, user_query: str, intent: str
+    ) -> Optional[List[str]]:
         """Generate search queries using various methods"""
         queries = [user_query]  # Always include original query
 
         # First validate if the query is likely to find Wikipedia articles
         try:
-            from backend.models.query_expansion_model import WikipediaQueryViability
-            validation_result = self.services["query_generator"].validate_wikipedia_query(user_query)
+            validation_result = self.services[
+                "query_generator"
+            ].validate_wikipedia_query(user_query)
 
             if validation_result == WikipediaQueryViability.VERY_UNLIKELY:
-                logger.warning("⚠️ Query unlikely to find Wikipedia articles: '%s'", user_query)
-                logger.info("🔄 Skipping query enhancement and secondary query generation")
+                logger.warning(
+                    "⚠️ Query unlikely to find Wikipedia articles: '%s'", user_query
+                )
+                logger.info(
+                    "🔄 Skipping query enhancement and secondary query generation"
+                )
                 return None
 
             logger.info("✅ Query validation passed, proceeding with enhancements")
@@ -282,23 +292,34 @@ class MultiSourceAgentService:
                     ),
                 )
                 logger.info("🔧 Query generator returned: %s", secondary_queries_result)
-                
+
                 # Extract queries from the returned dictionary
-                if isinstance(secondary_queries_result, dict) and "queries" in secondary_queries_result:
+                if (
+                    isinstance(secondary_queries_result, dict)
+                    and "queries" in secondary_queries_result
+                ):
                     secondary_queries = secondary_queries_result["queries"]
                     queries.extend(secondary_queries)
                     self.usage["openai_calls_made"] += len(secondary_queries)
-                    logger.info("🤖 Generated %d secondary queries using OpenAI: %s", 
-                               len(secondary_queries), secondary_queries)
+                    logger.info(
+                        "🤖 Generated %d secondary queries using OpenAI: %s",
+                        len(secondary_queries),
+                        secondary_queries,
+                    )
                 else:
                     # Handle case where it returns a list directly
                     if isinstance(secondary_queries_result, list):
                         queries.extend(secondary_queries_result)
-                        logger.info("🤖 Generated %d secondary queries (direct list): %s", 
-                                   len(secondary_queries_result), secondary_queries_result)
+                        logger.info(
+                            "🤖 Generated %d secondary queries (direct list): %s",
+                            len(secondary_queries_result),
+                            secondary_queries_result,
+                        )
                     else:
-                        logger.warning("⚠️ Unexpected query generator response type: %s", 
-                                      type(secondary_queries_result))
+                        logger.warning(
+                            "⚠️ Unexpected query generator response type: %s",
+                            type(secondary_queries_result),
+                        )
             except COMMON_SERVICE_EXCEPTIONS as e:
                 logger.warning("⚠️ Secondary query generation failed: %s", str(e))
 
@@ -450,111 +471,142 @@ class MultiSourceAgentService:
 
         # Use OpenAI to create unified synthesis like the original app
         try:
-            # Import here to avoid circular imports
-            from backend.models.openai_summarizer_model import get_openai_api_key
-            
             # Check imports at runtime
+            # pylint: disable=import-outside-toplevel
             try:
-                from langchain_openai import ChatOpenAI
-                from langchain.prompts import PromptTemplate
                 from langchain.chains import LLMChain
+                from langchain.prompts import PromptTemplate
+                from langchain_openai import ChatOpenAI
+
                 langchain_available = True
             except ImportError:
                 try:
+                    from langchain.chains import LLMChain
                     from langchain.chat_models import ChatOpenAI
                     from langchain.prompts import PromptTemplate
-                    from langchain.chains import LLMChain
+
                     langchain_available = True
                 except ImportError:
                     langchain_available = False
+            # pylint: enable=import-outside-toplevel
 
             if not langchain_available:
-                logger.warning("⚠️ LangChain not available for final synthesis, using fallback")
-                return self._create_fallback_synthesis(article_summaries, user_query, intent)
-                
+                logger.warning(
+                    "⚠️ LangChain not available for final synthesis, using fallback"
+                )
+                return self._create_fallback_synthesis(
+                    article_summaries, user_query, intent
+                )
+
             api_key = get_openai_api_key()
             if not api_key:
-                logger.warning("⚠️ OpenAI API key not available for final synthesis, using fallback")
-                return self._create_fallback_synthesis(article_summaries, user_query, intent)
-            
-            logger.info(f"🎯 Creating final synthesis from {len(article_summaries)} articles")
-            
+                logger.warning(
+                    "⚠️ OpenAI API key not available for final synthesis, using fallback"
+                )
+                return self._create_fallback_synthesis(
+                    article_summaries, user_query, intent
+                )
+
+            logger.info(
+                "🎯 Creating final synthesis from %d articles", len(article_summaries)
+            )
+
             # Prepare the content for synthesis (like original app)
             articles_content = []
             for i, summary in enumerate(article_summaries, 1):
-                title = summary.get('title', 'Unknown')
-                content = summary.get('summary', 'No summary available')
+                title = summary.get("title", "Unknown")
+                content = summary.get("summary", "No summary available")
                 articles_content.append(f"Article {i}: {title}\n{content}\n")
-            
+
             combined_content = "\n".join(articles_content)
-            
+
             # Create intent-specific synthesis prompt (like original app)
             intent_specific_instructions = {
-                'music': "Focus on the band's formation, key members, musical style, major albums, cultural impact, and legacy in popular music.",
-                'biography': "Focus on the person's life story, major achievements, contributions, and historical significance.",
-                'history': "Focus on causes, key events, major figures, consequences, and historical significance.",
-                'science': "Focus on scientific principles, discoveries, applications, and impact on the field.",
-                'technology': "Focus on how the technology works, development, applications, and impact on society.",
-                'general': "Focus on the main topics, key information, and overall significance."
+                "music": (
+                    "Focus on the band's formation, key members, musical style, "
+                    "major albums, cultural impact, and legacy in popular music."
+                ),
+                "biography": (
+                    "Focus on the person's life story, major achievements, "
+                    "contributions, and historical significance."
+                ),
+                "history": (
+                    "Focus on causes, key events, major figures, consequences, "
+                    "and historical significance."
+                ),
+                "science": (
+                    "Focus on scientific principles, discoveries, applications, "
+                    "and impact on the field."
+                ),
+                "technology": (
+                    "Focus on how the technology works, development, applications, "
+                    "and impact on society."
+                ),
+                "general": (
+                    "Focus on the main topics, key information, and overall significance."
+                ),
             }
-            
-            instruction = intent_specific_instructions.get(intent.lower(), intent_specific_instructions['general'])
-            
-            prompt_template = f"""You are tasked with creating a comprehensive final summary by synthesizing information from multiple Wikipedia articles.
 
-User's Question: "{user_query}"
+            instruction = intent_specific_instructions.get(
+                intent.lower(), intent_specific_instructions["general"]
+            )
 
-Your task: Create ONE unified summary that answers the user's question comprehensively by combining insights from all the provided articles.
+            prompt_template = (
+                f"You are tasked with creating a comprehensive final summary by synthesizing "
+                f"information from multiple Wikipedia articles.\n\n"
+                f'User\'s Question: "{user_query}"\n\n'
+                f"Your task: Create ONE unified summary that answers the user's question "
+                f"comprehensively by combining insights from all the provided articles.\n\n"
+                "Requirements:\n"
+                "- Maximum 30 lines\n"
+                "- Well-structured and easy to read\n"
+                f"- {instruction}\n"
+                "- Synthesize information rather than just listing facts\n"
+                "- Provide a coherent narrative that flows logically\n"
+                "- Include the most important and relevant information from all sources\n\n"
+                "Articles to synthesize:\n"
+                "{combined_content}\n\n"
+                "Final Comprehensive Summary:"
+            )
 
-Requirements:
-- Maximum 30 lines
-- Well-structured and easy to read
-- {instruction}
-- Synthesize information rather than just listing facts
-- Provide a coherent narrative that flows logically
-- Include the most important and relevant information from all sources
-
-Articles to synthesize:
-{{combined_content}}
-
-Final Comprehensive Summary:
-"""
-            
             # Create and run the synthesis chain (like original app)
             llm = ChatOpenAI(
                 model="gpt-3.5-turbo",
                 temperature=0.3,
                 max_completion_tokens=1500,
-                api_key=api_key
+                api_key=api_key,
             )
-            
+
             prompt = PromptTemplate(
-                input_variables=["combined_content"],
-                template=prompt_template
+                input_variables=["combined_content"], template=prompt_template
             )
-            
+
             chain = LLMChain(llm=llm, prompt=prompt)
-            
-            logger.info(f"🤖 Requesting final synthesis from OpenAI...")
-            logger.info(f"   📊 Synthesizing {len(article_summaries)} articles")
-            logger.info(f"   🎯 Intent: {intent}")
-            
+
+            logger.info("🤖 Requesting final synthesis from OpenAI...")
+            logger.info("   📊 Synthesizing %d articles", len(article_summaries))
+            logger.info("   🎯 Intent: %s", intent)
+
             final_summary = chain.run(combined_content=combined_content)
-            
-            logger.info(f"✅ Final synthesis completed successfully")
-            logger.info(f"   📝 Generated {len(final_summary.split())} words")
-            
+
+            logger.info("✅ Final synthesis completed successfully")
+            logger.info("   📝 Generated %d words", len(final_summary.split()))
+
             # Track OpenAI usage
             self.usage["openai_calls_made"] += 1
-            
-            return final_summary.strip()
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to create OpenAI synthesis: {str(e)}")
-            logger.info("🔄 Falling back to basic synthesis")
-            return self._create_fallback_synthesis(article_summaries, user_query, intent)
 
-    def _create_fallback_synthesis(self, article_summaries: List[Dict], user_query: str, intent: str) -> str:
+            return final_summary.strip()
+
+        except Exception as e:
+            logger.error("❌ Failed to create OpenAI synthesis: %s", str(e))
+            logger.info("🔄 Falling back to basic synthesis")
+            return self._create_fallback_synthesis(
+                article_summaries, user_query, intent
+            )
+
+    def _create_fallback_synthesis(
+        self, article_summaries: List[Dict], user_query: str, intent: str
+    ) -> str:
         """Fallback synthesis when OpenAI is not available"""
         # Create a combined synthesis (original behavior)
         synthesis_parts = [

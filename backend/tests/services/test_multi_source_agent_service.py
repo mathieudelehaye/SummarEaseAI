@@ -55,9 +55,6 @@ class TestRateLimitConfig:
 class TestMultiSourceAgent:
     """Test cases for MultiSourceAgentService"""
 
-    
-    
-    
     def test_init_balanced_mode(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
     ):
@@ -66,14 +63,13 @@ class TestMultiSourceAgent:
 
         assert agent.config["cost_mode"] == "BALANCED"
         assert agent.config["limits"]["max_articles"] == 3
-        assert agent.config["limits"]["max_secondary_queries"] == 3  # Changed from 4 to 3
+        assert (
+            agent.config["limits"]["max_secondary_queries"] == 3
+        )  # Changed from 4 to 3
         assert agent.config["limits"]["max_wikipedia_searches"] == 6
         assert agent.config["limits"]["enable_openai"] is True
         assert agent.config["limits"]["enable_agents"] is True
 
-    
-    
-    
     def test_init_minimal_mode(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
     ):
@@ -82,14 +78,13 @@ class TestMultiSourceAgent:
 
         assert agent.config["cost_mode"] == "MINIMAL"
         assert agent.config["limits"]["max_articles"] == 1
-        assert agent.config["limits"]["max_secondary_queries"] == 0  # Changed from 1 to 0
+        assert (
+            agent.config["limits"]["max_secondary_queries"] == 0
+        )  # Changed from 1 to 0
         assert agent.config["limits"]["max_wikipedia_searches"] == 1
         assert agent.config["limits"]["enable_openai"] is False
         assert agent.config["limits"]["enable_agents"] is False
 
-    
-    
-    
     def test_plan_search_strategy_with_openai(
         self, mock_agent_system, mock_query_gen_class, mock_get_classifier
     ):
@@ -118,13 +113,12 @@ class TestMultiSourceAgent:
         agent = MultiSourceAgentService(cost_mode="BALANCED")
 
         # Test the actual method that exists
-        queries = agent._generate_search_queries("artificial intelligence", "Technology")
+        queries = agent._generate_search_queries(
+            "artificial intelligence", "Technology"
+        )
         assert isinstance(queries, list)
         assert len(queries) > 0
 
-    
-    
-    
     def test_plan_search_strategy_rate_limited(
         self, mock_agent_system, mock_query_gen_class, mock_get_classifier
     ):
@@ -136,9 +130,6 @@ class TestMultiSourceAgent:
         assert isinstance(strategy, list)
         assert len(strategy) > 0
 
-    
-    
-    
     def test_generate_fallback_search_plan_biography(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
     ):
@@ -153,9 +144,6 @@ class TestMultiSourceAgent:
         assert isinstance(plan, list)
         assert len(plan) > 0
 
-    
-    
-    
     def test_generate_fallback_search_plan_science(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
     ):
@@ -170,9 +158,6 @@ class TestMultiSourceAgent:
         assert isinstance(plan, list)
         assert len(plan) > 0
 
-    
-    
-    
     def test_gather_articles_with_agents_success(
         self, mock_agent_system_class, mock_query_gen, mock_get_classifier
     ):
@@ -214,9 +199,6 @@ class TestMultiSourceAgent:
         articles = agent._search_and_gather_articles(strategy, "test query")
         assert isinstance(articles, list)
 
-    
-    
-    
     def test_gather_articles_rate_limited(
         self, mock_agent_system_class, mock_query_gen, mock_get_classifier
     ):
@@ -246,7 +228,6 @@ class TestMultiSourceAgent:
         articles = agent._search_and_gather_articles(strategy, "test query")
         assert isinstance(articles, list)
 
-        
     def test_analyze_intent_with_bert(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
     ):
@@ -261,7 +242,13 @@ class TestMultiSourceAgent:
         result = agent._classify_intent("artificial intelligence")
         assert isinstance(result, str)
         # The actual categories are different from BERT categories
-        assert result in ["general_knowledge", "biography", "definition", "historical_event", "technology"]
+        assert result in [
+            "general_knowledge",
+            "biography",
+            "definition",
+            "historical_event",
+            "technology",
+        ]
 
     def test_analyze_intent_fallback(
         self, mock_agent_system, mock_query_gen, mock_get_classifier
