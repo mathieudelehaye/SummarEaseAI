@@ -158,7 +158,7 @@ class MultiSourceAgentService(CommonSourceSummaryService):
         # Step 1: First validate if the query is likely to find Wikipedia articles
         if not self._validate_query(user_query):
             logger.warning("⚠️ Query is not likely to find relevant Wikipedia articles")
-            return self._create_error_response(
+            return self._create_empty_response(
                 "Query is not likely to find relevant Wikipedia articles",
                 user_query,
                 "N/A",
@@ -172,8 +172,10 @@ class MultiSourceAgentService(CommonSourceSummaryService):
         search_queries = self._generate_search_queries(user_query, detected_intent)
         if not search_queries:
             logger.warning("⚠️ No valid search queries generated")
-            return self._create_error_response(
-                "No valid search queries generated", user_query, detected_intent
+            return self._create_empty_response(
+                f"No Wikipedia page was found for the request '{user_query}'",
+                user_query,
+                detected_intent
             )
 
         logger.info("🔍 Generated %s search queries", len(search_queries))
@@ -209,7 +211,7 @@ class MultiSourceAgentService(CommonSourceSummaryService):
 
         except COMMON_SERVICE_EXCEPTIONS as e:
             logger.error("❌ Summary creation failed: %s", str(e))
-            return self._create_error_response(
+            return self._create_empty_response(
                 f"Summary creation failed: {str(e)}", user_query, detected_intent
             )
 
@@ -440,6 +442,8 @@ class MultiSourceAgentService(CommonSourceSummaryService):
             "individual_summaries": article_summaries,
             "article_metadata": article_metadata,
             "method": "multi_source_agent",
+            "summary_length": len(synthesis),
+            "summary_lines": len(synthesis.split("\n")) if synthesis else 0,
         }
 
     def _synthesize_multi_source_content(

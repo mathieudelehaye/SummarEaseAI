@@ -47,43 +47,47 @@ class CommonSourceSummaryService(ABC):
             "articles_processed": 0,
         }
 
-    def _create_error_response(
+    def _create_empty_response(
         self,
-        error_message: str,
+        message: str,
         user_query: str,
         intent: str,
         method: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Create standardized error response
+        Create standardized no-results response (instead of error)
 
         Args:
-            error_message: Description of the error
+            error_message: Description of why no results were found
             user_query: The original user query
             intent: Detected or provided intent
-            method: Service method that generated the error (auto-detected if None)
+            method: Service method that generated the response (auto-detected if None)
 
         Returns:
-            Dict with standardized error response format
+            Dict with standardized no-results response format
         """
         # Auto-detect method from class name if not provided
         if method is None:
             class_name = self.__class__.__name__
             if "Multi" in class_name:
-                method = "multi_source_agent_error"
+                method = "multi_source_agent"
             elif "Single" in class_name:
-                method = "single_source_agent_error"
+                method = "single_source_agent"
             else:
-                method = "common_summary_error"
-
+                method = "common_summary"
+        
         return {
-            "error": error_message,
+            "summary": message,
+            "synthesis": message,
             "user_query": user_query,
             "detected_intent": intent,
             "cost_mode": getattr(self, "config", {}).get("cost_mode", "unknown"),
             "usage_stats": self._get_usage_stats(),
             "method": method,
-            "success": False,
+            "success": True,
+            "articles_found": 0,
+            "summary_length": len(message),
+            "summary_lines": len(message.split("\n")) if message else 0,
         }
 
     def _get_usage_stats(self) -> Dict[str, int]:

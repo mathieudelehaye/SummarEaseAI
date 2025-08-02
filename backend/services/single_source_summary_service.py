@@ -169,7 +169,7 @@ class SingleSourceAgentService(CommonSourceSummaryService):
                 logger.warning(
                     "⚠️ Query is not likely to find relevant Wikipedia articles"
                 )
-                return self._create_error_response(
+                return self._create_empty_response(
                     "Query is not likely to find relevant Wikipedia articles",
                     query,
                     "N/A",
@@ -196,13 +196,16 @@ class SingleSourceAgentService(CommonSourceSummaryService):
             if intent_info:
                 result["intent"] = intent_info
 
-            # Step 5: Add service metadata
+            # Step 5: Add service metadata and analytics
+            summary_text = result.get("summary", "")
             result.update(
                 {
                     "method": "single_source_agent",
                     "model_type": model_type,
                     "bert_model_available": self.bert_model_loaded,
                     "service_layer": "single_source_summary_service",
+                    "summary_length": len(summary_text),
+                    "summary_lines": len(summary_text.split("\n")) if summary_text else 0,
                 }
             )
 
