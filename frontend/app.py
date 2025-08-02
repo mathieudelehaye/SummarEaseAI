@@ -375,11 +375,11 @@ def main():
                         # Create plotly gauge
                         import plotly.graph_objects as go
                         
-                    fig = go.Figure(go.Indicator(
+                        fig = go.Figure(go.Indicator(
                             mode = "gauge+number",
                             value = confidence,
                             domain = {'x': [0, 1], 'y': [0, 1]},
-                            title = {'text': "Confidence Score"},
+                            title = {'text': "Confidence Score", 'font': {'size': 16, 'color': "#333333"}},
                             gauge = {
                                 'axis': {'range': [0, 100]},
                                 'bar': {'color': "#1f77b4"},
@@ -397,17 +397,17 @@ def main():
                                     'value': confidence
                                 }
                             }
-                    ))
+                        ))
                         
-                    fig.update_layout(
-                        height=200,
-                        margin=dict(l=10, r=10, t=40, b=10),
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        font={'color': "#666666"}
-                    )
-                        
-                    st.plotly_chart(fig, use_container_width=True)
+                        fig.update_layout(
+                            height=250,
+                            margin=dict(l=10, r=10, t=50, b=10),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font={'color': "#666666", 'size': 12}
+                        )
+                            
+                        st.plotly_chart(fig, use_container_width=True)
     
     with tab3:
         st.header("📊 System Analytics")

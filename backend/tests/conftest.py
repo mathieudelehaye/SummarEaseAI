@@ -106,14 +106,22 @@ def mock_agent_system():
     mock_system.plan_search_strategy.return_value = {
         "primary_queries": ["test query"],
         "secondary_queries": [],
-        "search_strategy": "direct"
+        "search_strategy": "direct",
     }
     mock_system.gather_articles.return_value = [
-        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+        {
+            "title": "Test Article",
+            "url": "https://example.com",
+            "content": "Test content",
+        }
     ]
     mock_system.analyze_intent.return_value = {"intent": "Science", "confidence": 0.85}
     mock_system.rank_articles.return_value = [
-        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+        {
+            "title": "Test Article",
+            "url": "https://example.com",
+            "content": "Test content",
+        }
     ]
     return mock_system
 
@@ -126,14 +134,25 @@ def mock_agent_system_class():
     mock_instance.plan_search_strategy.return_value = {
         "primary_queries": ["test query"],
         "secondary_queries": [],
-        "search_strategy": "direct"
+        "search_strategy": "direct",
     }
     mock_instance.gather_articles.return_value = [
-        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+        {
+            "title": "Test Article",
+            "url": "https://example.com",
+            "content": "Test content",
+        }
     ]
-    mock_instance.analyze_intent.return_value = {"intent": "Science", "confidence": 0.85}
+    mock_instance.analyze_intent.return_value = {
+        "intent": "Science",
+        "confidence": 0.85,
+    }
     mock_instance.rank_articles.return_value = [
-        {"title": "Test Article", "url": "https://example.com", "content": "Test content"}
+        {
+            "title": "Test Article",
+            "url": "https://example.com",
+            "content": "Test content",
+        }
     ]
     mock_class.return_value = mock_instance
     return mock_class

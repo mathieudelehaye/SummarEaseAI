@@ -38,19 +38,48 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy MVC structured backend files (only production-needed files)
 COPY backend/__init__.py backend/
+
+# Controllers
+COPY backend/controllers/__init__.py backend/controllers/
+COPY backend/controllers/request_validation.py backend/controllers/
 COPY backend/controllers/summarization_controller.py backend/controllers/
+
+# Models
 COPY backend/models/__init__.py backend/models/
-COPY backend/models/langchain_model.py backend/models/
-COPY backend/models/llm_client.py backend/models/
-COPY backend/models/openai_summarizer_model.py backend/models/
-COPY backend/models/query_expansion_model.py backend/models/
-COPY backend/models/wikipedia_model.py backend/models/
+# Agents models
+COPY backend/models/agents/__init__.py backend/models/agents/
+COPY backend/models/agents/article_selection_agent.py backend/models/agents/
+COPY backend/models/agents/langchain_agents_model.py backend/models/agents/
+COPY backend/models/agents/query_enhancement_agent.py backend/models/agents/
+# Intent models
+COPY backend/models/intent/__init__.py backend/models/intent/
+COPY backend/models/intent/intent_data.py backend/models/intent/
+# LLM models
+COPY backend/models/llm/__init__.py backend/models/llm/
+COPY backend/models/llm/llm_client.py backend/models/llm/
+COPY backend/models/llm/openai_summarizer_model.py backend/models/llm/
+# Wikipedia models
+COPY backend/models/wikipedia/__init__.py backend/models/wikipedia/
+COPY backend/models/wikipedia/wikipedia_model.py backend/models/wikipedia/
+COPY backend/models/wikipedia/wikipedia_search_tool.py backend/models/wikipedia/
+
+# Services
 COPY backend/services/__init__.py backend/services/
-COPY backend/services/multi_source_agent_service.py backend/services/
+COPY backend/services/common_source_summary_service.py backend/services/
+COPY backend/services/multi_source_summary_service.py backend/services/
+COPY backend/services/single_source_summary_service.py backend/services/
+COPY backend/services/query_generation_service.py backend/services/
+COPY backend/services/query_processing_service.py backend/services/
 COPY backend/services/summarization_workflow_service.py backend/services/
-COPY backend/templates/ backend/templates/
+
+# Templates
+COPY backend/templates/main.html backend/templates/
+
+# Views
 COPY backend/views/__init__.py backend/views/
 COPY backend/views/api_routes.py backend/views/
+
+# ML Models
 COPY ml_models/bert_classifier.py ml_models/
 COPY ml_models/intent_classifier.py ml_models/
 

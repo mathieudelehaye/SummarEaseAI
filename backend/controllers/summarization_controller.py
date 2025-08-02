@@ -4,13 +4,10 @@ Handles summarization requests and coordinates with services
 """
 
 import logging
-
-# TODO: Move to a separate service or model in the future
-import wikipedia
-
-from dotenv import load_dotenv
 from pathlib import Path
 from typing import Any, Dict
+
+from dotenv import load_dotenv
 
 # Import BERT classifier at module level to avoid import-outside-toplevel
 try:
@@ -23,12 +20,27 @@ except ImportError:
 
 # Import MultiSourceAgentService for multi-source summarization
 try:
-    from backend.services.multi_source_agent_service import get_multi_source_agent_service
+    from backend.services.multi_source_summary_service import (
+        get_multi_source_summary_service,
+    )
+
     MULTI_SOURCE_AVAILABLE = True
 except ImportError:
     MULTI_SOURCE_AVAILABLE = False
-    get_multi_source_agent_service = None
+    get_multi_source_summary_service = None
     logging.warning("MultiSourceAgentService not available")
+
+# Import SingleSourceAgentService for single-source summarization
+try:
+    from backend.services.single_source_summary_service import (
+        get_single_source_summary_service,
+    )
+
+    SINGLE_SOURCE_AVAILABLE = True
+except ImportError:
+    SINGLE_SOURCE_AVAILABLE = False
+    get_single_source_summary_service = None
+    logging.warning("SingleSourceAgentService not available")
 
 logger = logging.getLogger(__name__)
 
@@ -127,57 +139,6 @@ class SummarizationController:
                 "all_scores": {},
             }
 
-    # TODO: move this to the Wikipedia model
-    def _search_wikipedia(self, query: str, max_results: int = 3) -> Dict[str, Any]:
-        """Basic Wikipedia search functionality"""
-        try:
-            # Search for articles
-            search_results = wikipedia.search(query, results=max_results)
-            if not search_results:
-                return {
-                    "error": "No Wikipedia articles found",
-                    "query": query,
-                    "summary": None,
-                }
-
-            # Get the first article
-            article_title = search_results[0]
-            page = wikipedia.page(article_title)
-
-            # Get summary (first few sentences)
-            summary = wikipedia.summary(article_title, sentences=5)
-
-            return {
-                "query": query,
-                "title": article_title,
-                "summary": summary,
-                "url": page.url,
-                "status": "success",
-            }
-
-        except wikipedia.exceptions.DisambiguationError as e:
-            # Handle disambiguation by taking the first option
-            try:
-                page = wikipedia.page(e.options[0])
-                summary = wikipedia.summary(e.options[0], sentences=5)
-                return {
-                    "query": query,
-                    "title": e.options[0],
-                    "summary": summary,
-                    "url": page.url,
-                    "status": "success",
-                }
-            except (wikipedia.PageError, KeyError, ValueError) as inner_e:
-                logger.error("Error handling disambiguation: %s", inner_e)
-                return {
-                    "error": f"Disambiguation error: {str(inner_e)}",
-                    "query": query,
-                    "summary": None,
-                }
-        except (ConnectionError, TimeoutError) as e:
-            logger.error("Error in Wikipedia search: %s", e)
-            return {"error": str(e), "query": query, "summary": None}
-
     def summarize_single_source(
         self,
         query: str,
@@ -185,36 +146,26 @@ class SummarizationController:
         model_type: str = "wikipedia",
         use_intent: bool = True,
     ) -> Dict[str, Any]:
-        """Summarize using single source (Wikipedia)"""
+        """Summarize using single source with proper service delegation"""
         try:
-            # Get intent if requested
-            intent_info = None
-            if (
-                use_intent
-                and hasattr(self, "bert_model_loaded")
-                and self.bert_model_loaded
-            ):
-                intent_result = self.predict_intent_bert(query)
-                intent_info = {
-                    "category": intent_result.get("predicted_category", "NO DETECTED"),
-                    "confidence": intent_result.get("confidence", 0.0),
-                }
+            # Always delegate to service layer (proper MVC separation)
+            service = get_single_source_summary_service()
+            result = service.get_single_source_summary(
+                query=query,
+                model_type=model_type,
+                use_intent=use_intent,
+            )
 
-            # Get Wikipedia summary
-            result = self._search_wikipedia(query)
-
-            if intent_info:
-                result["intent"] = intent_info
-
+            logger.info("✅ Single-source summarization delegated to service layer")
             return result
 
         except Exception as e:
-            logger.error("Error in single source summarization: %s", e)
+            logger.error("❌ Error in single source service delegation: %s", str(e))
             return {
                 "error": str(e),
                 "query": query,
                 "summary": None,
-                "wikipedia_url": None,
+                "method": "service_delegation_error",
             }
 
     def get_health_status(self) -> Dict[str, Any]:
@@ -253,8 +204,10 @@ class SummarizationController:
         max_lines: int = 10,
     ) -> Dict[str, Any]:
         """Summarize using multi-source approach with agent integration"""
-        if not MULTI_SOURCE_AVAILABLE or not get_multi_source_agent_service:
-            logger.warning("MultiSourceAgentService not available, falling back to single source")
+        if not MULTI_SOURCE_AVAILABLE or not get_multi_source_summary_service:
+            logger.warning(
+                "MultiSourceAgentService not available, falling back to single source"
+            )
             result = self.summarize_single_source(query, max_lines)
             result["method"] = "single_source_fallback"
             result["agent_powered"] = False
@@ -263,14 +216,14 @@ class SummarizationController:
 
         try:
             # Get the multi-source agent service
-            agent_service = get_multi_source_agent_service()
-            
+            agent_service = get_multi_source_summary_service()
+
             # Call the agent service with proper parameters (note: uses user_query not query)
             result = agent_service.get_multi_source_summary(
                 user_query=query,
-                user_intent=None  # Let the service detect intent automatically
+                user_intent=None,  # Let the service detect intent automatically
             )
-            
+
             # Ensure proper response format
             if "error" not in result:
                 # Format the response to match expected API format
@@ -287,14 +240,17 @@ class SummarizationController:
                     "cost_tracking": result.get("usage_stats", {}),
                     "summary_length": len(result.get("synthesis", "")),
                     "summary_lines": len(result.get("synthesis", "").split("\n")),
-                    "wikipedia_pages": [article.get("title", "") for article in result.get("individual_summaries", [])]
+                    "wikipedia_pages": [
+                        article.get("title", "")
+                        for article in result.get("individual_summaries", [])
+                    ],
                 }
-                
+
                 logger.info("✅ Multi-source summarization completed with agents")
                 return formatted_result
-            else:
-                return result
-            
+
+            return result
+
         except Exception as e:
             logger.error("❌ Error in multi-source agent summarization: %s", str(e))
             # Fallback to single source on error

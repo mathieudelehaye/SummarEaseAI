@@ -1,15 +1,15 @@
 """
 OpenAI Query Generation Service
-Moved from utils/openai_query_generator.py to proper services layer
 """
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Dict, List
 
-from backend.models.llm_client import get_llm_client
+from backend.models.llm.llm_client import get_llm_client
 
 # Common exceptions for service error handling
 COMMON_SERVICE_EXCEPTIONS = (
@@ -41,7 +41,7 @@ except ImportError:
     )
 
 
-class OpenAIQueryGenerationService:
+class QueryGenerationService:
     """
     OpenAI-powered query generation service for multi-source search
     Business logic for intelligent secondary query generation
@@ -53,19 +53,22 @@ class OpenAIQueryGenerationService:
 
         logger.info("🔧 Initializing OpenAI Query Generation Service...")
         logger.info("🔧 LANGCHAIN_AVAILABLE: %s", LANGCHAIN_AVAILABLE)
-        logger.info("🔧 OpenAI availability check: %s", self.llm_client.check_openai_availability())
+        logger.info(
+            "🔧 OpenAI availability check: %s",
+            self.llm_client.check_openai_availability(),
+        )
 
         if LANGCHAIN_AVAILABLE and self.llm_client.check_openai_availability():
             try:
                 logger.info("🔧 Creating ChatOpenAI instance...")
                 # Pass the API key explicitly to ensure it's available
-                import os
+
                 api_key = os.getenv("OPENAI_API_KEY")
                 if not api_key:
                     logger.error("❌ OPENAI_API_KEY not found in environment")
                     self.llm = None
                     return
-                    
+
                 self.llm = ChatOpenAI(
                     openai_api_key=api_key,
                     model="gpt-3.5-turbo",
@@ -77,7 +80,9 @@ class OpenAIQueryGenerationService:
                 )
             except (ImportError, ValueError, AttributeError, OSError) as e:
                 logger.error(
-                    "❌ Failed to initialize OpenAI query generation: %s", str(e), exc_info=True
+                    "❌ Failed to initialize OpenAI query generation: %s",
+                    str(e),
+                    exc_info=True,
                 )
                 self.llm = None
         else:
@@ -106,7 +111,9 @@ class OpenAIQueryGenerationService:
             intent,
         )
 
-        logger.info("🔧 LLM status: %s", "Available" if self.llm else "None - using fallback")
+        logger.info(
+            "🔧 LLM status: %s", "Available" if self.llm else "None - using fallback"
+        )
         if self.llm:
             return self._openai_query_generation(primary_query, intent, max_queries)
         return self._fallback_query_generation(primary_query, intent, max_queries)
@@ -116,16 +123,19 @@ class OpenAIQueryGenerationService:
     ) -> Dict[str, List[str]]:
         """Generate queries using OpenAI/LangChain"""
         try:
-            logger.info("🔧 Starting OpenAI query generation for: %s (intent: %s)", primary_query, intent)
+            logger.info(
+                "🔧 Starting OpenAI query generation for: %s (intent: %s)",
+                primary_query,
+                intent,
+            )
             # Intent-specific prompts for better query generation
             intent_strategies = {
-                "History": "historical events, key figures, timeline, causes and effects",
-                "Science": "scientific principles, research, discoveries, applications",
-                "Technology": "innovations, development, applications, impact",
-                "Biography": "life events, achievements, influence, personal background",
-                "Music": "musical style, albums, influence, band members, career",
-                "Sports": "competitions, achievements, rules, history",
-                "Finance": "economic impact, market influence, financial aspects",
+                "history": "historical events, key figures, timeline, causes and effects",
+                "science": "scientific principles, research, discoveries, applications",
+                "technology": "innovations, development, applications, impact",
+                "music": "musical style, albums, influence, band members, career",
+                "sports": "competitions, achievements, rules, history",
+                "finance": "economic impact, market influence, financial aspects",
             }
 
             strategy = intent_strategies.get(intent, "comprehensive information")
@@ -159,7 +169,9 @@ class OpenAIQueryGenerationService:
                 queries = json.loads(response.strip())
                 if isinstance(queries, list):
                     logger.info(
-                        "✅ Generated %d secondary queries using OpenAI: %s", len(queries), queries
+                        "✅ Generated %d secondary queries using OpenAI: %s",
+                        len(queries),
+                        queries,
                     )
                     return {
                         "queries": queries[:max_queries],
@@ -167,11 +179,14 @@ class OpenAIQueryGenerationService:
                         "intent_strategy": strategy,
                         "confidence": 0.9,
                     }
-                else:
-                    logger.warning("OpenAI response is not a list: %s", type(queries))
+
+                logger.warning("OpenAI response is not a list: %s", type(queries))
             except json.JSONDecodeError as e:
-                logger.warning("Failed to parse OpenAI JSON response: %s. Raw response: %s", 
-                              str(e), response.strip()[:200])
+                logger.warning(
+                    "Failed to parse OpenAI JSON response: %s. Raw response: %s",
+                    str(e),
+                    response.strip()[:200],
+                )
 
         except COMMON_SERVICE_EXCEPTIONS as e:
             logger.error("OpenAI query generation failed: %s", str(e), exc_info=True)
@@ -264,13 +279,13 @@ class _QueryGenerationServiceSingleton:
     _instance = None
 
     @classmethod
-    def get_instance(cls) -> OpenAIQueryGenerationService:
+    def get_instance(cls) -> QueryGenerationService:
         """Get or create the singleton service instance"""
         if cls._instance is None:
-            cls._instance = OpenAIQueryGenerationService()
+            cls._instance = QueryGenerationService()
         return cls._instance
 
 
-def get_query_generation_service() -> OpenAIQueryGenerationService:
+def get_query_generation_service() -> QueryGenerationService:
     """Get or create global query generation service instance"""
     return _QueryGenerationServiceSingleton.get_instance()

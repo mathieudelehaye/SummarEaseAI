@@ -11,9 +11,12 @@ disable=
     W0613,  # Unused argument (common in Flask route handlers)
     R0801,  # Similar lines in the same file
     R0903,  # Too few public methods (common for lightweight service/model classes)
-    W0511,  # TODO/FIXME in comments
+    W0511,  # TODO comment (common for TODOs in code)
     C0412,  # Ungrouped imports (langchain_openai is separate from langchain)
     astroid-error,  # Disable astroid errors (like recursion issues with complex libraries)
+    W0718,   # Catching too general exception Exception
+    R0914,   # Too many local variables
+    R0915,   # Too many statements
 
 [TYPECHECK]
 generated-members=

@@ -4,7 +4,7 @@ Tests the critical backend API functionality
 """
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -59,7 +59,7 @@ class TestAPIEndpoints:
             "intent": "Science",
             "confidence": 0.92,
             "model_type": "BERT",
-            "timestamp": "2024-01-01T00:00:00Z"
+            "timestamp": "2024-01-01T00:00:00Z",
         }
 
         response = client.post(
@@ -103,7 +103,7 @@ class TestAPIEndpoints:
             "method": "single_source",
             "total_sources": 1,
             "summary_length": 500,
-            "summary_lines": 5
+            "summary_lines": 5,
         }
 
         response = client.post(
@@ -153,12 +153,24 @@ class TestAPIEndpoints:
             "summary_lines": 8,
             "agent_powered": True,
             "articles": [
-                {"title": "Space Exploration", "url": "https://example.com/1", "selection_method": "relevance"},
-                {"title": "NASA Missions", "url": "https://example.com/2", "selection_method": "relevance"},
-                {"title": "Space Technology", "url": "https://example.com/3", "selection_method": "relevance"}
+                {
+                    "title": "Space Exploration",
+                    "url": "https://example.com/1",
+                    "selection_method": "relevance",
+                },
+                {
+                    "title": "NASA Missions",
+                    "url": "https://example.com/2",
+                    "selection_method": "relevance",
+                },
+                {
+                    "title": "Space Technology",
+                    "url": "https://example.com/3",
+                    "selection_method": "relevance",
+                },
             ],
             "usage_stats": {"tokens_used": 1500},
-            "cost_tracking": {"total_cost": 0.05}
+            "cost_tracking": {"total_cost": 0.05},
         }
 
         response = client.post(
@@ -251,7 +263,7 @@ class TestAPIResponseFormat:
             "model_loaded": True,
             "categories_available": ["Science", "Technology", "History"],
             "gpu_accelerated": True,
-            "timestamp": "2024-01-01T00:00:00Z"
+            "timestamp": "2024-01-01T00:00:00Z",
         }
 
         response = client.post(

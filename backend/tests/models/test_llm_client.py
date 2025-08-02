@@ -5,7 +5,7 @@ Tests the OpenAI client wrapper and abstraction
 
 from unittest.mock import Mock, patch
 
-from backend.models.llm_client import LLMClient, get_llm_client
+from backend.models.llm.llm_client import LLMClient, get_llm_client
 
 
 class TestLLMClient:
@@ -23,7 +23,7 @@ class TestLLMClient:
         client = LLMClient()
         assert client.check_openai_availability() is False
 
-    @patch("backend.models.llm_client.LLMClient")  # patch where it's used
+    @patch("backend.models.llm.llm_client.LLMClient")  # patch where it's used
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_get_llm_client_success(self, mock_llm_class):
         """Test successful LLM client creation"""
@@ -37,8 +37,8 @@ class TestLLMClient:
         assert llm_client == mock_instance
         mock_llm_class.assert_called_once()
 
-    @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_call_openai_chat_success(self, mock_chat_openai):
         """Test successful OpenAI chat call"""
@@ -56,8 +56,8 @@ class TestLLMClient:
         assert response == "This is the AI response"
         mock_openai_instance.invoke.assert_called_once_with("Test prompt")
 
-    @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_call_openai_chat_with_custom_params(self, mock_chat_openai):
         """Test OpenAI chat call with custom parameters"""
@@ -83,8 +83,8 @@ class TestLLMClient:
 
         assert "Error: OpenAI API key not configured" in response
 
-    @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_call_openai_chat_exception(self, mock_chat_openai):
         """Test OpenAI chat call when API raises exception"""
@@ -98,33 +98,6 @@ class TestLLMClient:
         assert "Error calling OpenAI" in response
         assert "API call failed" in response
 
-    def test_get_model_info(self):
-        """Test model information retrieval"""
-        client = LLMClient(model="gpt-4", temperature=0.5, max_tokens=1500)
-
-        info = client.get_model_info()
-
-        assert info["model"] == "gpt-4"
-        assert info["temperature"] == 0.5
-        assert info["max_tokens"] == 1500
-        assert "openai_available" in info
-
-    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
-    def test_get_model_info_with_api_key(self):
-        """Test model information when API key available"""
-        client = LLMClient()
-        info = client.get_model_info()
-
-        assert info["openai_available"] is True
-
-    @patch.dict("os.environ", {}, clear=True)
-    def test_get_model_info_without_api_key(self):
-        """Test model information when API key unavailable"""
-        client = LLMClient()
-        info = client.get_model_info()
-
-        assert info["openai_available"] is False
-
 
 class TestLLMClientSingleton:
     """Test singleton pattern for LLMClient"""
@@ -132,9 +105,10 @@ class TestLLMClientSingleton:
     def test_get_llm_client_singleton(self):
         """Test that get_llm_client returns same instance"""
         # Reset singleton instance
-        from backend.models.llm_client import _LLMClientSingleton
+        from backend.models.llm.llm_client import _LLMClientSingleton
+
         _LLMClientSingleton._instance = None
-        
+
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
             client1 = get_llm_client()
             client2 = get_llm_client()
@@ -144,9 +118,10 @@ class TestLLMClientSingleton:
     def test_singleton_instance_type(self):
         """Test that singleton returns correct type"""
         # Reset singleton instance
-        from backend.models.llm_client import _LLMClientSingleton
+        from backend.models.llm.llm_client import _LLMClientSingleton
+
         _LLMClientSingleton._instance = None
-        
+
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
             client = get_llm_client()
             assert isinstance(client, LLMClient)
@@ -155,7 +130,7 @@ class TestLLMClientSingleton:
 class TestLLMClientConfigurationVariations:
     """Test different configuration scenarios"""
 
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_client_reuses_instance(self, mock_chat_openai):
         """Test that client reuses the same instance"""
@@ -179,8 +154,8 @@ class TestLLMClientConfigurationVariations:
 class TestLLMClientErrorHandling:
     """Test error handling scenarios"""
 
-    @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_call_openai_chat_timeout_error(self, mock_chat_openai):
         """Test handling of timeout errors"""
@@ -194,8 +169,8 @@ class TestLLMClientErrorHandling:
         assert "Error calling OpenAI" in response
         assert "Request timeout" in response
 
-    @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_call_openai_chat_connection_error(self, mock_chat_openai):
         """Test handling of connection errors"""
@@ -209,8 +184,8 @@ class TestLLMClientErrorHandling:
         assert "Error calling OpenAI" in response
         assert "Connection failed" in response
 
-    @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_call_openai_chat_value_error(self, mock_chat_openai):
         """Test handling of value errors"""
@@ -240,8 +215,8 @@ class TestLLMClientErrorHandling:
 class TestLLMClientIntegration:
     """Test integration scenarios"""
 
-    @patch("backend.models.llm_client.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.llm_client.ChatOpenAI")
+    @patch("backend.models.llm.llm_client.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.llm_client.ChatOpenAI")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_full_workflow(self, mock_chat_openai):
         """Test complete workflow with API key"""
@@ -257,10 +232,6 @@ class TestLLMClientIntegration:
         # Check availability
         assert client.check_openai_availability() is True
 
-        # Get model info
-        info = client.get_model_info()
-        assert info["openai_available"] is True
-
         # Make API call
         response = client.call_openai_chat("Test workflow")
         assert response == "Workflow response"
@@ -272,10 +243,6 @@ class TestLLMClientIntegration:
 
         # Check availability
         assert client.check_openai_availability() is False
-
-        # Get model info
-        info = client.get_model_info()
-        assert info["openai_available"] is False
 
         # Try API call
         response = client.call_openai_chat("Test")
