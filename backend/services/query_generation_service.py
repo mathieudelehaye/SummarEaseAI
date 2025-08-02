@@ -1,17 +1,15 @@
 """
 OpenAI Query Generation Service
-Moved from utils/openai_query_generator.py to proper services layer
 """
 
 import json
 import logging
 import os
 import sys
-from enum import Enum
 from pathlib import Path
 from typing import Dict, List
 
-from backend.models.llm_client import get_llm_client
+from backend.models.llm.llm_client import get_llm_client
 
 # Common exceptions for service error handling
 COMMON_SERVICE_EXCEPTIONS = (
@@ -43,12 +41,7 @@ except ImportError:
     )
 
 
-class WikipediaQueryViability(Enum):
-    VERY_LIKELY = "Very likely"
-    VERY_UNLIKELY = "Very unlikely"
-
-
-class OpenAIQueryGenerationService:
+class QueryGenerationService:
     """
     OpenAI-powered query generation service for multi-source search
     Business logic for intelligent secondary query generation
@@ -124,69 +117,6 @@ class OpenAIQueryGenerationService:
         if self.llm:
             return self._openai_query_generation(primary_query, intent, max_queries)
         return self._fallback_query_generation(primary_query, intent, max_queries)
-
-    def validate_wikipedia_query(self, user_query: str) -> WikipediaQueryViability:
-        """
-        Validate if a user query is likely to find relevant Wikipedia articles
-
-        Args:
-            user_query: The user's question to validate
-
-        Returns:
-            WikipediaQueryViability enum indicating if query is likely to succeed
-        """
-        if not self.llm_client.check_openai_availability():
-            logger.warning(
-                "⚠️ OpenAI not available for query validation, assuming VERY_LIKELY"
-            )
-            return WikipediaQueryViability.VERY_LIKELY
-
-        try:
-            logger.info("🔍 Validating Wikipedia query viability for: '%s'", user_query)
-
-            validation_prompt = (
-                "If I look for an answer to the following question in Wikipedia will I "
-                f'find any related article: "{user_query}". '
-                "Return ONLY a string which can be matched to an enum variable with "
-                "two possible values: Very likely, Very unlikely"
-            )
-
-            logger.info("🔧 Calling OpenAI for query validation...")
-            response = self.llm_client.call_openai_chat(
-                validation_prompt, max_tokens=10
-            )
-
-            if not response:
-                logger.warning(
-                    "⚠️ Empty response from OpenAI validation,assuming VERY_LIKELY"
-                )
-                return WikipediaQueryViability.VERY_LIKELY
-
-            # Clean and parse response
-            response_text = response.strip().lower()
-            logger.info("🔍 OpenAI validation response: '%s'", response)
-
-            # Match response to enum values
-            if "very likely" in response_text:
-                result = WikipediaQueryViability.VERY_LIKELY
-                logger.info("✅ Query validation result: VERY_LIKELY")
-                return result
-
-            if "very unlikely" in response_text:
-                result = WikipediaQueryViability.VERY_UNLIKELY
-                logger.info("⚠️ Query validation result: VERY_UNLIKELY")
-                return result
-
-            logger.warning(
-                "⚠️ Unexpected validation response: '%s', assuming VERY_LIKELY",
-                response,
-            )
-            return WikipediaQueryViability.VERY_LIKELY
-
-        except Exception as e:
-            logger.error("❌ Error in Wikipedia query validation: %s", str(e))
-            logger.info("🔄 Assuming VERY_LIKELY due to validation error")
-            return WikipediaQueryViability.VERY_LIKELY
 
     def _openai_query_generation(
         self, primary_query: str, intent: str, max_queries: int
@@ -349,13 +279,13 @@ class _QueryGenerationServiceSingleton:
     _instance = None
 
     @classmethod
-    def get_instance(cls) -> OpenAIQueryGenerationService:
+    def get_instance(cls) -> QueryGenerationService:
         """Get or create the singleton service instance"""
         if cls._instance is None:
-            cls._instance = OpenAIQueryGenerationService()
+            cls._instance = QueryGenerationService()
         return cls._instance
 
 
-def get_query_generation_service() -> OpenAIQueryGenerationService:
+def get_query_generation_service() -> QueryGenerationService:
     """Get or create global query generation service instance"""
     return _QueryGenerationServiceSingleton.get_instance()

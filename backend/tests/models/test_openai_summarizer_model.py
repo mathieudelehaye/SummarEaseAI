@@ -6,7 +6,7 @@ Tests the data access layer for OpenAI API interactions
 import os
 from unittest.mock import Mock, patch
 
-from backend.models.openai_summarizer_model import (
+from backend.models.llm.openai_summarizer_model import (
     chunk_text_for_openai,
     create_intent_aware_chain,
     create_line_limited_chain,
@@ -52,8 +52,8 @@ class TestUtilityFunctions:
         assert sanitize_article_text("") == ""
         assert sanitize_article_text(None) == ""
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.RecursiveCharacterTextSplitter")
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.openai_summarizer_model.RecursiveCharacterTextSplitter")
     def test_chunk_text_for_openai_with_langchain(self, mock_splitter_class):
         """Test text chunking with LangChain available"""
         mock_splitter = Mock()
@@ -63,7 +63,7 @@ class TestUtilityFunctions:
         result = chunk_text_for_openai("long text here", 1000)
         assert result == ["chunk1", "chunk2"]
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", False)
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", False)
     def test_chunk_text_for_openai_fallback(self):
         """Test text chunking fallback when LangChain unavailable"""
         text = "word " * 1000  # Long text
@@ -75,11 +75,11 @@ class TestUtilityFunctions:
 class TestChainCreation:
     """Test LangChain chain creation functions"""
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.get_openai_api_key")
-    @patch("backend.models.openai_summarizer_model.ChatOpenAI")
-    @patch("backend.models.openai_summarizer_model.LLMChain")
-    @patch("backend.models.openai_summarizer_model.PromptTemplate")
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.openai_summarizer_model.get_openai_api_key")
+    @patch("backend.models.llm.openai_summarizer_model.ChatOpenAI")
+    @patch("backend.models.llm.openai_summarizer_model.LLMChain")
+    @patch("backend.models.llm.openai_summarizer_model.PromptTemplate")
     def test_create_summarization_chain_success(
         self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key
     ):
@@ -95,25 +95,25 @@ class TestChainCreation:
         result = create_summarization_chain()
         assert result == mock_chain
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", False)
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", False)
     def test_create_summarization_chain_no_langchain(self):
         """Test chain creation when LangChain is not available"""
         result = create_summarization_chain()
         assert result is None
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.get_openai_api_key")
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.openai_summarizer_model.get_openai_api_key")
     def test_create_summarization_chain_no_api_key(self, mock_get_key):
         """Test chain creation when API key is not available"""
         mock_get_key.return_value = None
         result = create_summarization_chain()
         assert result is None
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.get_openai_api_key")
-    @patch("backend.models.openai_summarizer_model.ChatOpenAI")
-    @patch("backend.models.openai_summarizer_model.LLMChain")
-    @patch("backend.models.openai_summarizer_model.PromptTemplate")
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.openai_summarizer_model.get_openai_api_key")
+    @patch("backend.models.llm.openai_summarizer_model.ChatOpenAI")
+    @patch("backend.models.llm.openai_summarizer_model.LLMChain")
+    @patch("backend.models.llm.openai_summarizer_model.PromptTemplate")
     def test_create_line_limited_chain(
         self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key
     ):
@@ -129,11 +129,11 @@ class TestChainCreation:
         result = create_line_limited_chain(20)
         assert result == mock_chain
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.get_openai_api_key")
-    @patch("backend.models.openai_summarizer_model.ChatOpenAI")
-    @patch("backend.models.openai_summarizer_model.LLMChain")
-    @patch("backend.models.openai_summarizer_model.PromptTemplate")
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.openai_summarizer_model.get_openai_api_key")
+    @patch("backend.models.llm.openai_summarizer_model.ChatOpenAI")
+    @patch("backend.models.llm.openai_summarizer_model.LLMChain")
+    @patch("backend.models.llm.openai_summarizer_model.PromptTemplate")
     def test_create_intent_aware_chain_science(
         self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key
     ):
@@ -149,11 +149,11 @@ class TestChainCreation:
         result = create_intent_aware_chain("Science", 0.8)
         assert result == mock_chain
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.get_openai_api_key")
-    @patch("backend.models.openai_summarizer_model.ChatOpenAI")
-    @patch("backend.models.openai_summarizer_model.LLMChain")
-    @patch("backend.models.openai_summarizer_model.PromptTemplate")
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.openai_summarizer_model.get_openai_api_key")
+    @patch("backend.models.llm.openai_summarizer_model.ChatOpenAI")
+    @patch("backend.models.llm.openai_summarizer_model.LLMChain")
+    @patch("backend.models.llm.openai_summarizer_model.PromptTemplate")
     def test_create_intent_aware_chain_low_confidence(
         self, mock_prompt_template, mock_llm_chain, mock_chat_openai, mock_get_key
     ):
@@ -173,8 +173,8 @@ class TestChainCreation:
 class TestErrorHandling:
     """Test error handling in the model"""
 
-    @patch("backend.models.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
-    @patch("backend.models.openai_summarizer_model.RecursiveCharacterTextSplitter")
+    @patch("backend.models.llm.openai_summarizer_model.LANGCHAIN_AVAILABLE", True)
+    @patch("backend.models.llm.openai_summarizer_model.RecursiveCharacterTextSplitter")
     def test_chunk_text_splitter_exception(self, mock_splitter_class):
         """Test chunking when text splitter raises exception"""
         mock_splitter_class.side_effect = Exception("Splitter error")

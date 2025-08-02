@@ -46,7 +46,7 @@ COPY backend/models/openai_summarizer_model.py backend/models/
 COPY backend/models/query_expansion_model.py backend/models/
 COPY backend/models/wikipedia_model.py backend/models/
 COPY backend/services/__init__.py backend/services/
-COPY backend/services/multi_source_agent_service.py backend/services/
+COPY backend/services/multi_source_summary_service.py backend/services/
 COPY backend/services/summarization_workflow_service.py backend/services/
 COPY backend/templates/ backend/templates/
 COPY backend/views/__init__.py backend/views/

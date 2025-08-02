@@ -7,20 +7,17 @@ Main orchestration service with rate limiting and cost control
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-import wikipedia
 from dotenv import load_dotenv
 from ml_models.bert_classifier import get_classifier as get_bert_classifier
 
-from backend.models.langchain_model import get_langchain_agents_service
-from backend.models.llm_client import get_llm_client
-from backend.models.openai_summarizer_model import get_openai_api_key
-from backend.models.query_expansion_model import (
-    WikipediaQueryViability,
-    get_query_generation_service,
-)
-from backend.models.wikipedia_model import WikipediaService
+from backend.models.agents.langchain_agents_model import get_langchain_agents_service
+from backend.models.llm.llm_client import get_llm_client
+from backend.models.llm.openai_summarizer_model import get_openai_api_key
+from backend.models.wikipedia.wikipedia_model import WikipediaModel
+from backend.services.common_source_summary_service import CommonSourceSummaryService
+from backend.services.query_generation_service import get_query_generation_service
 from backend.services.summarization_workflow_service import (
     summarize_article_with_intent,
 )
@@ -93,7 +90,7 @@ class RateLimitConfig:
         return limits.get(mode, limits["BALANCED"])
 
 
-class MultiSourceAgentService:
+class MultiSourceAgentService(CommonSourceSummaryService):
     """
     Enhanced Multi-Source Agent with comprehensive logging and rate limiting.
 
@@ -105,6 +102,9 @@ class MultiSourceAgentService:
     """
 
     def __init__(self, cost_mode: str = "BALANCED"):
+        # Initialize base class first
+        super().__init__()
+
         # Configuration objects to reduce instance attributes
         self.config = {
             "bert_model_path": repo_root / "ml_models" / "bert_gpu_model",
@@ -112,19 +112,13 @@ class MultiSourceAgentService:
             "limits": RateLimitConfig.get_limits_for_mode(cost_mode.upper()),
         }
 
-        # Service instances
+        # Service instances (merge with common services)
         self.services = {
+            **self.common_services,
             "bert_classifier": get_bert_classifier(str(self.config["bert_model_path"])),
             "llm_client": get_llm_client(),
             "query_generator": get_query_generation_service(),
-            "langchain_agents": get_langchain_agents_service(),
-        }
-
-        # Usage tracking
-        self.usage = {
-            "openai_calls_made": 0,
-            "wikipedia_calls_made": 0,
-            "articles_processed": 0,
+            "agents_service": get_langchain_agents_service(),
         }
 
         # Initialize BERT model
@@ -161,11 +155,20 @@ class MultiSourceAgentService:
         logger.info("🚀 Starting multi-source summarization for: '%s'", user_query)
         self._reset_usage_tracking()
 
-        # Step 1: Intent classification
+        # Step 1: First validate if the query is likely to find Wikipedia articles
+        if not self._validate_query(user_query):
+            logger.warning("⚠️ Query is not likely to find relevant Wikipedia articles")
+            return self._create_error_response(
+                "Query is not likely to find relevant Wikipedia articles",
+                user_query,
+                "N/A",
+            )
+
+        # Step 2: Intent classification
         detected_intent = self._classify_intent(user_query, user_intent)
         logger.info("🧠 Intent classified as: %s", detected_intent)
 
-        # Step 2: Generate search queries
+        # Step 3: Generate search queries
         search_queries = self._generate_search_queries(user_query, detected_intent)
         if not search_queries:
             logger.warning("⚠️ No valid search queries generated")
@@ -175,7 +178,7 @@ class MultiSourceAgentService:
 
         logger.info("🔍 Generated %s search queries", len(search_queries))
 
-        # Step 3: Search and gather articles
+        # Step 4: Search and gather articles
         articles_data = self._search_and_gather_articles(search_queries, user_query)
 
         if not articles_data:
@@ -183,7 +186,7 @@ class MultiSourceAgentService:
 
         logger.info("📚 Successfully gathered %d articles", len(articles_data))
 
-        # Step 4: Summarize articles
+        # Step 5: Summarize articles
         try:
             summary_result = self._create_multi_source_summary(
                 articles_data, user_query, detected_intent
@@ -238,35 +241,13 @@ class MultiSourceAgentService:
             return "historical_event"
         return "general_knowledge"
 
-    def _generate_search_queries(
-        self, user_query: str, intent: str
-    ) -> Optional[List[str]]:
+    def _generate_search_queries(self, user_query: str, intent: str) -> List[str]:
         """Generate search queries using various methods"""
         queries = [user_query]  # Always include original query
 
-        # First validate if the query is likely to find Wikipedia articles
-        try:
-            validation_result = self.services[
-                "query_generator"
-            ].validate_wikipedia_query(user_query)
-
-            if validation_result == WikipediaQueryViability.VERY_UNLIKELY:
-                logger.warning(
-                    "⚠️ Query unlikely to find Wikipedia articles: '%s'", user_query
-                )
-                logger.info(
-                    "🔄 Skipping query enhancement and secondary query generation"
-                )
-                return None
-
-            logger.info("✅ Query validation passed, proceeding with enhancements")
-
-        except Exception as e:
-            logger.warning("⚠️ Query validation failed: %s, proceeding anyway", str(e))
-
         # Use enhanced query based on intent
         # Initialize Wikipedia service
-        wikipedia_service = WikipediaService()
+        wikipedia_service = WikipediaModel()
         enhanced_query = wikipedia_service.enhance_query_with_intent(user_query, intent)
         if enhanced_query != user_query:
             queries.append(enhanced_query)
@@ -360,7 +341,7 @@ class MultiSourceAgentService:
                 # Try LangChain agents first if enabled
                 if self.config["limits"]["enable_agents"]:
                     article_result = self.services[
-                        "langchain_agents"
+                        "agents_service"
                     ].intelligent_wikipedia_search(query)
                     if (
                         "article_info" in article_result
@@ -378,7 +359,7 @@ class MultiSourceAgentService:
 
                 # Fallback to regular Wikipedia search
                 # Initialize Wikipedia service
-                wikipedia_service = WikipediaService()
+                wikipedia_service = WikipediaModel()
                 article_info = wikipedia_service.search_and_fetch_article_info(query)
                 self.usage["wikipedia_calls_made"] += 1
 
@@ -394,7 +375,6 @@ class MultiSourceAgentService:
                 ConnectionError,
                 TimeoutError,
                 ValueError,
-                wikipedia.PageError,
             ) as e:
                 logger.warning("⚠️ Search failed for query '%s': %s", query, str(e))
                 continue
@@ -633,43 +613,6 @@ class MultiSourceAgentService:
 
         return "\n".join(synthesis_parts)
 
-    def _create_error_response(
-        self, error_message: str, user_query: str, intent: str
-    ) -> Dict[str, Any]:
-        """Create standardized error response"""
-        return {
-            "error": error_message,
-            "user_query": user_query,
-            "detected_intent": intent,
-            "cost_mode": self.config["cost_mode"],
-            "usage_stats": self._get_usage_stats(),
-            "method": "multi_source_agent_error",
-        }
-
-    def _reset_usage_tracking(self):
-        """Reset usage tracking for new request"""
-        self.usage["openai_calls_made"] = 0
-        self.usage["wikipedia_calls_made"] = 0
-        self.usage["articles_processed"] = 0
-
-    def _get_usage_stats(self) -> Dict[str, int]:
-        """Get current usage statistics"""
-        return {
-            "openai_calls_made": self.usage["openai_calls_made"],
-            "wikipedia_calls_made": self.usage["wikipedia_calls_made"],
-            "articles_processed": self.usage["articles_processed"],
-            "openai_calls_remaining": max(
-                0,
-                self.config["limits"]["max_secondary_queries"]
-                - self.usage["openai_calls_made"],
-            ),
-            "wikipedia_calls_remaining": max(
-                0,
-                self.config["limits"]["max_wikipedia_searches"]
-                - self.usage["wikipedia_calls_made"],
-            ),
-        }
-
     def set_cost_mode(self, mode: str):
         """Change cost control mode"""
         self.config["cost_mode"] = mode.upper()
@@ -693,6 +636,6 @@ class _MultiSourceAgentServiceSingleton:
         return cls._instance
 
 
-def get_multi_source_agent_service() -> MultiSourceAgentService:
+def get_multi_source_summary_service() -> MultiSourceAgentService:
     """Get or create global multi-source agent service instance"""
     return _MultiSourceAgentServiceSingleton.get_instance()

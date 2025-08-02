@@ -6,7 +6,7 @@ Tests the core multi-source intelligence functionality
 from unittest.mock import Mock
 
 # Import the class under test
-from backend.services.multi_source_agent_service import (
+from backend.services.multi_source_summary_service import (
     MultiSourceAgentService,
     RateLimitConfig,
 )

@@ -9,7 +9,7 @@ import logging
 from dotenv import load_dotenv
 
 # First-party imports
-from ..models.openai_summarizer_model import (
+from ..models.llm.openai_summarizer_model import (
     chunk_text_for_openai,
     create_intent_aware_chain,
     create_line_limited_chain,

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 import wikipedia
 import wikipediaapi
 
-from .intent_data import INTENT_ENHANCEMENTS
+from ..intent.intent_data import INTENT_ENHANCEMENTS
 
 # Add project root to path
 repo_root = Path(__file__).resolve().parent.parent.parent
@@ -23,7 +23,7 @@ if str(repo_root) not in sys.path:
 logger = logging.getLogger(__name__)
 
 
-class WikipediaService:
+class WikipediaModel:
     """
     Handles all Wikipedia content fetching and processing
     Pure business logic for Wikipedia operations
@@ -34,7 +34,7 @@ class WikipediaService:
         try:
             self.wiki_api = wikipediaapi.Wikipedia(
                 language="en",
-                user_agent="SummarEaseAI/1.0 (https://github.com/your-repo) Python/WikipediaAPI",
+                user_agent="SummarEaseAI/1.0 (https://github.com/SummarEaseAI) Python/WikipediaAPI",
             )
         except Exception as e:
             logger.error("Failed to initialize Wikipedia API: %s", str(e))
@@ -42,7 +42,9 @@ class WikipediaService:
 
         # Set user agent for wikipedia library
         try:
-            wikipedia.set_user_agent("SummarEaseAI/1.0 (https://github.com/your-repo)")
+            wikipedia.set_user_agent(
+                "SummarEaseAI/1.0 (https://github.com/SummarEaseAI)"
+            )
         except Exception as e:
             logger.error("Failed to set Wikipedia user agent: %s", str(e))
 
@@ -339,40 +341,6 @@ class WikipediaService:
             logger.info("=" * 80)
             return None
 
-    def fetch_article_with_conversion_info(
-        self, topic: str
-    ) -> Tuple[Optional[str], str, bool]:
-        """
-        Fetch Wikipedia article and return conversion information
-
-        Returns:
-            tuple: (article_content, processed_topic, was_converted)
-        """
-        try:
-            # Preprocess historical queries
-            processed_topic, was_converted = self.preprocess_historical_query(topic)
-
-            # Fetch article using the processed topic
-            article_content = (
-                self.fetch_article(processed_topic)
-                if was_converted
-                else self.fetch_article(topic)
-            )
-
-            return article_content, processed_topic, was_converted
-
-        except (
-            wikipedia.PageError,
-            wikipedia.DisambiguationError,
-            ConnectionError,
-            ValueError,
-            KeyError,
-        ) as e:
-            logger.error(
-                "Error fetching article with conversion info '%s': %s", topic, str(e)
-            )
-            return None, topic, False
-
     def enhance_query_with_intent(
         self, query: str, intent: str, confidence: float = 0.5
     ) -> str:
@@ -524,162 +492,6 @@ class WikipediaService:
             logger.error("❌ Error fetching page '%s': %s", page_title, str(page_error))
             return None
 
-    def search_and_fetch_article_agentic_simple(
-        self, query: str, max_results: int = 3
-    ) -> Optional[Dict[str, str]]:
-        """
-        Simple agentic Wikipedia search with basic optimization
-
-        Args:
-            query: Original user query
-            max_results: Maximum number of search results to consider
-
-        Returns:
-            Dictionary with article info or None if not found
-        """
-        try:
-            logger.info("🤖 STARTING SIMPLE AGENTIC WIKIPEDIA SEARCH")
-            logger.info("=" * 80)
-            logger.info("📝 Original user query: '%s'", query)
-
-            # Check if we can do basic optimization
-            optimized_query = self._simple_query_optimization(query)
-
-            # Use optimized query for search
-            search_query = optimized_query if optimized_query != query else query
-
-            # Preprocess historical queries (keep existing logic)
-            processed_query, was_converted = self.preprocess_historical_query(
-                search_query
-            )
-
-            logger.info("📝 Final processed query: '%s'", processed_query)
-            logger.info("🔄 Query was converted: %s", was_converted)
-            logger.info("📊 Max results requested: %d", max_results)
-
-            # Search Wikipedia
-            try:
-                search_results = wikipedia.search(processed_query, results=max_results)
-            except Exception as search_error:
-                logger.error(
-                    "❌ Error in Wikipedia search for '%s': %s",
-                    processed_query,
-                    str(search_error),
-                )
-                # Fallback to basic search
-                logger.info("🔄 Falling back to basic Wikipedia search")
-                return self.search_and_fetch_article_info(query, max_results)
-
-            logger.info(
-                "✅ Wikipedia API returned %d search results:", len(search_results)
-            )
-            for i, result in enumerate(search_results):
-                logger.info("   %d. '%s'", i + 1, result)
-
-            if not search_results:
-                logger.warning(
-                    "❌ No search results found for query: '%s'", processed_query
-                )
-                return None
-
-            # Simple page selection logic
-            selected_page = self._simple_page_selection(query, search_results)
-
-            # Fetch the selected page
-            logger.info("=" * 80)
-            logger.info("📄 FETCHING SELECTED WIKIPEDIA PAGE")
-            logger.info("=" * 80)
-            logger.info("🎯 Selected page: '%s'", selected_page)
-
-            return self._fetch_wikipedia_page(
-                selected_page, query, search_results, optimized_query
-            )
-
-        except (
-            wikipedia.PageError,
-            wikipedia.DisambiguationError,
-            ConnectionError,
-            ValueError,
-            KeyError,
-        ) as e:
-            logger.error(
-                "❌ Error in simple agentic search for '%s': %s", query, str(e)
-            )
-            logger.info("=" * 80)
-            # Fallback to basic search
-            logger.info("🔄 Falling back to basic Wikipedia search")
-            return self.search_and_fetch_article_info(query, max_results)
-
-    def _simple_query_optimization(self, query: str) -> str:
-        """Simple rule-based query optimization"""
-        query_lower = query.lower()
-
-        # Simple optimization rules
-        optimizations = {
-            # Questions about people/bands
-            "who were the beatles": "The Beatles",
-            "who was": query.replace("Who was", "")
-            .replace("who was", "")
-            .strip()
-            .title(),
-            "who were": query.replace("Who were", "")
-            .replace("who were", "")
-            .strip()
-            .title(),
-            # Science questions
-            "explain quantum": "Quantum mechanics",
-            "quantum physics": "Quantum mechanics",
-            # Historical dates
-            "what happened on july 20, 1969": "Apollo 11",
-            "july 20 1969": "Apollo 11",
-            "apollo 11 moon landing": "Apollo 11",
-        }
-
-        # Check for direct matches
-        if query_lower in optimizations:
-            optimized = optimizations[query_lower]
-            logger.info("🧠 Simple optimization: '%s' → '%s'", query, optimized)
-            return optimized
-
-        # Handle "who was/were" patterns
-        if query_lower.startswith("who was ") or query_lower.startswith("who were "):
-            # Extract the subject
-            subject = query.split(" ", 2)[-1].replace("?", "").strip()
-            logger.info("🧠 Person/entity optimization: '%s' → '%s'", query, subject)
-            return subject
-
-        logger.info("🧠 No optimization applied to: '%s'", query)
-        return query
-
-    def _simple_page_selection(self, query: str, page_options: List[str]) -> str:
-        """Simple rule-based page selection"""
-        if len(page_options) <= 1:
-            return page_options[0] if page_options else ""
-
-        query_lower = query.lower()
-
-        # Prefer main articles over sub-articles
-        for page in page_options:
-            page_lower = page.lower()
-
-            # For Beatles questions, prefer main "The Beatles" page
-            if "beatles" in query_lower and page_lower == "the beatles":
-                logger.info("🎯 Selected main Beatles page: '%s'", page)
-                return page
-
-            # Prefer pages without parentheses or "list of"
-            if "(" not in page and "list of" not in page_lower:
-                # If it's a simple match to the query intent
-                if any(
-                    word in page_lower for word in query_lower.split() if len(word) > 3
-                ):
-                    logger.info("🎯 Selected main page: '%s'", page)
-                    return page
-
-        # Default to first option
-        logger.info("🎯 Using first option: '%s'", page_options[0])
-        return page_options[0]
-
     def _simple_disambiguation_selection(self, query: str, options: List[str]) -> str:
         """Simple disambiguation selection"""
         query_lower = query.lower()
@@ -705,47 +517,75 @@ class WikipediaService:
         logger.info("🎯 Using first disambiguation option: '%s'", options[0])
         return options[0]
 
+    def search_wikipedia_basic(
+        self, query: str, max_results: int = 3
+    ) -> Dict[str, any]:
+        """
+        Basic Wikipedia search functionality moved from controller
+        Returns search results with title, summary, and URL
+        """
+        try:
+            # Search for articles
+            search_results = wikipedia.search(query, results=max_results)
+            if not search_results:
+                return {
+                    "error": "No Wikipedia articles found",
+                    "query": query,
+                    "summary": None,
+                }
 
-class _WikipediaServiceSingleton:
-    """Singleton wrapper for WikipediaService"""
+            # Get the first article
+            article_title = search_results[0]
+            page = wikipedia.page(article_title)
+
+            # Get summary (first few sentences)
+            summary = wikipedia.summary(article_title, sentences=5)
+
+            return {
+                "query": query,
+                "title": article_title,
+                "summary": summary,
+                "url": page.url,
+                "status": "success",
+            }
+
+        except wikipedia.exceptions.DisambiguationError as e:
+            # Handle disambiguation by taking the first option
+            try:
+                page = wikipedia.page(e.options[0])
+                summary = wikipedia.summary(e.options[0], sentences=5)
+                return {
+                    "query": query,
+                    "title": e.options[0],
+                    "summary": summary,
+                    "url": page.url,
+                    "status": "success",
+                }
+            except (wikipedia.PageError, KeyError, ValueError) as inner_e:
+                logger.error("Error handling disambiguation: %s", inner_e)
+                return {
+                    "error": f"Disambiguation error: {str(inner_e)}",
+                    "query": query,
+                    "summary": None,
+                }
+        except (ConnectionError, TimeoutError) as e:
+            logger.error("Error in Wikipedia search: %s", e)
+            return {"error": str(e), "query": query, "summary": None}
+
+
+class _WikipediaModelSingleton:
+    """Singleton wrapper for WikipediaModel"""
 
     _instance = None
 
     @classmethod
-    def get_instance(cls) -> WikipediaService:
+    def get_instance(cls) -> WikipediaModel:
         """Get or create the singleton service instance"""
         if cls._instance is None:
-            cls._instance = WikipediaService()
+            cls._instance = WikipediaModel()
         return cls._instance
 
 
-def get_wikipedia_service() -> WikipediaService:
+def get_wikipedia_service() -> WikipediaModel:
     """Get or create global Wikipedia service instance"""
-    return _WikipediaServiceSingleton.get_instance()
-
-
-# Compatibility functions for existing imports
-def search_and_fetch_article_info(
-    query: str, max_results: int = 1
-) -> Optional[Dict[str, str]]:
-    """Compatibility function for existing imports"""
-    return get_wikipedia_service().search_and_fetch_article_info(query, max_results)
-
-
-def enhance_query_with_intent(query: str, intent: str, confidence: float = 0.5) -> str:
-    """Compatibility function for existing imports"""
-    return get_wikipedia_service().enhance_query_with_intent(query, intent, confidence)
-
-
-def fetch_article_with_conversion_info(topic: str) -> Tuple[Optional[str], str, bool]:
-    """Compatibility function for existing imports"""
-    return get_wikipedia_service().fetch_article_with_conversion_info(topic)
-
-
-def search_and_fetch_article_agentic_simple(
-    query: str, max_results: int = 3
-) -> Optional[Dict[str, str]]:
-    """Compatibility function for existing imports"""
-    return get_wikipedia_service().search_and_fetch_article_agentic_simple(
-        query, max_results
-    )
+    return _WikipediaModelSingleton.get_instance()
