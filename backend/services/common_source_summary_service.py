@@ -75,7 +75,7 @@ class CommonSourceSummaryService(ABC):
                 method = "single_source_agent"
             else:
                 method = "common_summary"
-        
+
         return {
             "summary": message,
             "synthesis": message,

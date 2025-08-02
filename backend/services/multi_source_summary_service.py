@@ -175,7 +175,7 @@ class MultiSourceAgentService(CommonSourceSummaryService):
             return self._create_empty_response(
                 f"No Wikipedia page was found for the request '{user_query}'",
                 user_query,
-                detected_intent
+                detected_intent,
             )
 
         logger.info("🔍 Generated %s search queries", len(search_queries))

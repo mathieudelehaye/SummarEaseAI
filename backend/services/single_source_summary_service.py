@@ -205,7 +205,9 @@ class SingleSourceAgentService(CommonSourceSummaryService):
                     "bert_model_available": self.bert_model_loaded,
                     "service_layer": "single_source_summary_service",
                     "summary_length": len(summary_text),
-                    "summary_lines": len(summary_text.split("\n")) if summary_text else 0,
+                    "summary_lines": (
+                        len(summary_text.split("\n")) if summary_text else 0
+                    ),
                 }
             )
 
