@@ -51,6 +51,7 @@ COPY backend/models/agents/__init__.py backend/models/agents/
 COPY backend/models/agents/article_selection_agent.py backend/models/agents/
 COPY backend/models/agents/langchain_agents_model.py backend/models/agents/
 COPY backend/models/agents/query_enhancement_agent.py backend/models/agents/
+COPY backend/models/agents/query_validation_agent.py backend/models/agents/
 # Intent models
 COPY backend/models/intent/__init__.py backend/models/intent/
 COPY backend/models/intent/intent_data.py backend/models/intent/

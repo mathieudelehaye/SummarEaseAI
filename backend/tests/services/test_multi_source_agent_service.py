@@ -158,7 +158,6 @@ class TestMultiSourceAgent:
         assert isinstance(plan, list)
         assert len(plan) > 0
 
-
     def test_gather_articles_rate_limited(
         self, mock_agent_system_class, mock_query_gen, mock_get_classifier
     ):

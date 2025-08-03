@@ -145,6 +145,10 @@ Question: {input}
         elif query_lower.startswith("what is "):
             enhanced = query.replace("What is ", "").replace("what is ", "").strip()
 
+        # Remove trailing question mark if present
+        if enhanced.endswith("?"):
+            enhanced = enhanced[:-1].strip()
+
         return {
             "original_query": query,
             "enhanced_query": enhanced,
