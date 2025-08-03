@@ -76,7 +76,7 @@ class QueryProcessingService:
         self, user_query: str
     ) -> _WikipediaQueryViability:
         """
-        Internal method containing the validation logic moved from query_expansion_model
+        Internal method containing the validation logic.
 
         Args:
             user_query: The user's question to validate

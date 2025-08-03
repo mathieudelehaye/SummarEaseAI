@@ -22,22 +22,14 @@ from ..models.llm.openai_summarizer_model import (
 try:
     from langchain.chains import LLMChain
     from langchain.prompts import PromptTemplate
-    from langchain_openai import ChatOpenAI
+    from langchain.chat_models import ChatOpenAI
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
-    try:
-        # Fallback for older LangChain versions
-        from langchain.chains import LLMChain
-        from langchain.chat_models import ChatOpenAI
-        from langchain.prompts import PromptTemplate
-
-        LANGCHAIN_AVAILABLE = True
-    except ImportError:
-        LANGCHAIN_AVAILABLE = False
-        logging.warning(
-            "LangChain not available. OpenAI summarization will be disabled."
-        )
+    LANGCHAIN_AVAILABLE = False
+    logging.warning(
+        "LangChain not available. OpenAI summarization will be disabled."
+    )
 
 # Load environment variables
 load_dotenv()

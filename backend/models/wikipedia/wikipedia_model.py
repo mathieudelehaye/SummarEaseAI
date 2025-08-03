@@ -106,111 +106,6 @@ class WikipediaModel:
 
         return sanitized
 
-    def fetch_article(self, topic: str) -> Optional[str]:
-        """
-        Fetch Wikipedia article content by topic/title
-        """
-        try:
-            # Preprocess historical queries
-            processed_topic, _ = self.preprocess_historical_query(topic)
-
-            # Check if wiki_api is available
-            if self.wiki_api is None:
-                logger.error("Wikipedia API not initialized")
-                return None
-
-            page = self.wiki_api.page(processed_topic)
-
-            if page.exists():
-                logger.info("Successfully fetched article: %s", processed_topic)
-                logger.info(
-                    "🔗 Article URL: https://en.wikipedia.org/wiki/%s",
-                    processed_topic.replace(" ", "_"),
-                )
-                logger.info("📝 Article title from Wikipedia: %s", page.title)
-
-                # Sanitize content before returning
-                raw_content = page.text
-                sanitized_content = self.sanitize_wikipedia_content(raw_content)
-
-                article_preview = (
-                    sanitized_content[:500] + "..."
-                    if len(sanitized_content) > 500
-                    else sanitized_content
-                )
-                logger.info("📄 Article content starts with: %s", article_preview)
-                return sanitized_content
-            # Try searching for the topic if direct page doesn't exist
-            logger.info(
-                "Direct page not found for '%s', trying search...", processed_topic
-            )
-            return self.search_and_fetch_article(processed_topic)
-
-        except Exception as e:
-            logger.error("Error fetching article '%s': %s", topic, str(e))
-            return None
-
-    def search_and_fetch_article(
-        self, query: str, max_results: int = 1
-    ) -> Optional[str]:
-        """
-        Search Wikipedia and fetch the first relevant article
-        """
-        try:
-            # Preprocess historical queries
-            processed_query, _ = self.preprocess_historical_query(query)
-
-            # Use wikipedia library for better search functionality
-            search_results = wikipedia.search(processed_query, results=max_results + 2)
-
-            for result in search_results:
-                try:
-                    page = wikipedia.page(result)
-                    logger.info("Found and fetched article: %s", result)
-                    logger.info(
-                        "🔗 Search result URL: https://en.wikipedia.org/wiki/%s",
-                        result.replace(" ", "_"),
-                    )
-                    logger.info("📝 Search result page title: %s", page.title)
-
-                    # Sanitize content before returning
-                    raw_content = page.content
-                    sanitized_content = self.sanitize_wikipedia_content(raw_content)
-
-                    content_preview = (
-                        sanitized_content[:500] + "..."
-                        if len(sanitized_content) > 500
-                        else sanitized_content
-                    )
-                    logger.info(
-                        "📄 Search result content starts with: %s", content_preview
-                    )
-                    return sanitized_content
-                except wikipedia.exceptions.DisambiguationError as e:
-                    # Handle disambiguation pages by taking the first option
-                    try:
-                        page = wikipedia.page(e.options[0])
-                        logger.info("Resolved disambiguation to: %s", e.options[0])
-                        # Sanitize content before returning
-                        return self.sanitize_wikipedia_content(page.content)
-                    except (wikipedia.PageError, ConnectionError, ValueError):
-                        continue
-                except (wikipedia.PageError, ConnectionError, ValueError):
-                    continue
-
-            logger.warning("No suitable article found for query: %s", query)
-            return None
-
-        except (
-            wikipedia.PageError,
-            wikipedia.DisambiguationError,
-            ConnectionError,
-            ValueError,
-        ) as e:
-            logger.error("Error searching for article '%s': %s", query, str(e))
-            logger.info("=" * 80)
-            return None
-
     def search_and_fetch_article_info(
         self, query: str, max_results: int = 1
     ) -> Optional[Dict[str, str]]:
@@ -412,111 +307,6 @@ class WikipediaModel:
 
         return query
 
-    def _fetch_wikipedia_page(
-        self,
-        page_title: str,
-        query: str,
-        search_results: List[str],
-        optimized_query: str,
-    ) -> Optional[Dict[str, str]]:
-        """Fetch a Wikipedia page and return article info."""
-        try:
-            # Use auto_suggest=False to prevent disambiguation issues
-            page = wikipedia.page(page_title, auto_suggest=False)
-
-            logger.info("✅ Successfully fetched page!")
-            logger.info("📄 Page title: %s", page.title)
-            logger.info("🔗 Page URL: %s", page.url)
-            logger.info("=" * 80)
-
-            # Sanitize content before returning
-            sanitized_content = self.sanitize_wikipedia_content(page.content)
-
-            return {
-                "content": sanitized_content,
-                "title": page.title,
-                "url": page.url,
-                "summary": page.summary,
-                "search_method": "simple_agentic",
-                "original_query": query,
-                "optimized_query": optimized_query,
-                "selected_from": search_results,
-            }
-
-        except wikipedia.exceptions.DisambiguationError as e:
-            logger.info("⚠️  Disambiguation page encountered for '%s'", page_title)
-            logger.info("📋 Available options: %s...", e.options[:5])
-
-            # Use simple logic to select disambiguation option
-            best_option = self._simple_disambiguation_selection(query, e.options[:5])
-
-            logger.info("🔄 Trying disambiguation option: '%s'", best_option)
-
-            try:
-                page = wikipedia.page(best_option, auto_suggest=False)
-                logger.info("✅ Resolved disambiguation to: %s", best_option)
-                logger.info("=" * 80)
-
-                # Sanitize content before returning
-                sanitized_content = self.sanitize_wikipedia_content(page.content)
-
-                return {
-                    "content": sanitized_content,
-                    "title": page.title,
-                    "url": page.url,
-                    "summary": page.summary,
-                    "search_method": "simple_agentic",
-                    "original_query": query,
-                    "optimized_query": optimized_query,
-                    "selected_from": search_results,
-                    "disambiguation_resolved": best_option,
-                }
-
-            except (
-                wikipedia.PageError,
-                wikipedia.DisambiguationError,
-                ConnectionError,
-                ValueError,
-            ) as disambiguation_error:
-                logger.error(
-                    "❌ Failed to resolve disambiguation: %s",
-                    str(disambiguation_error),
-                )
-                return None
-
-        except (
-            wikipedia.PageError,
-            ConnectionError,
-            ValueError,
-        ) as page_error:
-            logger.error("❌ Error fetching page '%s': %s", page_title, str(page_error))
-            return None
-
-    def _simple_disambiguation_selection(self, query: str, options: List[str]) -> str:
-        """Simple disambiguation selection"""
-        query_lower = query.lower()
-
-        # Prefer options that match the query intent
-        for option in options:
-            option_lower = option.lower()
-
-            # Avoid obvious mismatches
-            if any(
-                unwanted in option_lower for unwanted in ["album", "song", "film", "tv"]
-            ):
-                continue
-
-            # Look for matches
-            if any(
-                word in option_lower for word in query_lower.split() if len(word) > 3
-            ):
-                logger.info("🎯 Selected disambiguation option: '%s'", option)
-                return option
-
-        # Default to first option
-        logger.info("🎯 Using first disambiguation option: '%s'", options[0])
-        return options[0]
-
     def search_wikipedia_basic(
         self, query: str, max_results: int = 3
     ) -> Dict[str, any]:
@@ -524,6 +314,8 @@ class WikipediaModel:
         Basic Wikipedia search functionality moved from controller
         Returns search results with title, summary, and URL
         """
+        import pdb; pdb.set_trace()
+
         try:
             # Search for articles
             search_results = wikipedia.search(query, results=max_results)
@@ -533,6 +325,8 @@ class WikipediaModel:
                     "query": query,
                     "summary": None,
                 }
+
+            suggestions = wikipedia.suggest(query)
 
             # Get the first article
             article_title = search_results[0]

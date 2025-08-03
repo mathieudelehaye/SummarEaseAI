@@ -11,20 +11,15 @@ from dotenv import load_dotenv
 
 # LangChain imports
 try:
-    from langchain_openai import ChatOpenAI
+    from langchain.chat_models import ChatOpenAI
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
-    try:
-        from langchain.chat_models import ChatOpenAI
-
-        LANGCHAIN_AVAILABLE = True
-    except ImportError:
-        LANGCHAIN_AVAILABLE = False
-        ChatOpenAI = None
-        logging.warning(
-            "LangChain not available. Some LLM functionality will be limited."
-        )
+    LANGCHAIN_AVAILABLE = False
+    ChatOpenAI = None
+    logging.warning(
+        "LangChain not available. Some LLM functionality will be limited."
+    )
 
 # Load environment variables
 load_dotenv()

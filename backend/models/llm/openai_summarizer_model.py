@@ -17,29 +17,19 @@ try:
     from langchain.prompts import PromptTemplate
     from langchain.schema import BaseOutputParser
     from langchain.text_splitter import RecursiveCharacterTextSplitter
-    from langchain_openai import ChatOpenAI
+    from langchain.chat_models import ChatOpenAI
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
-    try:
-        # Fallback for older LangChain versions
-        from langchain.chains import LLMChain
-        from langchain.chat_models import ChatOpenAI
-        from langchain.prompts import PromptTemplate
-        from langchain.schema import BaseOutputParser
-        from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-        LANGCHAIN_AVAILABLE = True
-    except ImportError:
-        LANGCHAIN_AVAILABLE = False
-        # Set these to None for mocking in tests
-        LLMChain = None
-        ChatOpenAI = None
-        PromptTemplate = None
-        RecursiveCharacterTextSplitter = None
-        logging.warning(
-            "LangChain not available. OpenAI summarization will be disabled."
-        )
+    LANGCHAIN_AVAILABLE = False
+    # Set these to None for mocking in tests
+    LLMChain = None
+    ChatOpenAI = None
+    PromptTemplate = None
+    RecursiveCharacterTextSplitter = None
+    logging.warning(
+        "LangChain not available. OpenAI summarization will be disabled."
+    )
 
 # Load environment variables
 load_dotenv()
