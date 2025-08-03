@@ -10,6 +10,18 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
+
+# Check imports at runtime
+try:
+    from langchain.chains import LLMChain
+    from langchain.chat_models import ChatOpenAI
+    from langchain.prompts import PromptTemplate
+
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+    logging.warning("LangChain not available. Some LLM functionality will be limited.")
+
 from ml_models.bert_classifier import get_classifier as get_bert_classifier
 
 from backend.models.agents.langchain_agents_model import get_langchain_agents_service
@@ -455,26 +467,7 @@ class MultiSourceAgentService(CommonSourceSummaryService):
 
         # Use OpenAI to create unified synthesis like the original app
         try:
-            # Check imports at runtime
-            # pylint: disable=import-outside-toplevel
-            try:
-                from langchain.chains import LLMChain
-                from langchain.prompts import PromptTemplate
-                from langchain_openai import ChatOpenAI
-
-                langchain_available = True
-            except ImportError:
-                try:
-                    from langchain.chains import LLMChain
-                    from langchain.chat_models import ChatOpenAI
-                    from langchain.prompts import PromptTemplate
-
-                    langchain_available = True
-                except ImportError:
-                    langchain_available = False
-            # pylint: enable=import-outside-toplevel
-
-            if not langchain_available:
+            if not LANGCHAIN_AVAILABLE:
                 logger.warning(
                     "⚠️ LangChain not available for final synthesis, using fallback"
                 )
@@ -553,6 +546,7 @@ class MultiSourceAgentService(CommonSourceSummaryService):
                 "Final Comprehensive Summary:"
             )
 
+            # TODO: don't import langchain here, move this to the MVC model layer
             # Create and run the synthesis chain (like original app)
             llm = ChatOpenAI(
                 model="gpt-3.5-turbo",

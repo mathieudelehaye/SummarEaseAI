@@ -57,6 +57,7 @@ class ArticleSelectionAgent:
 
         memory = ConversationBufferMemory(memory_key="memory", return_messages=True)
 
+        # pylint: disable=C0301
         self.agent = initialize_agent(
             tools=tools,
             llm=self.llm,
@@ -64,7 +65,27 @@ class ArticleSelectionAgent:
             verbose=True,
             memory=memory,
             handle_parsing_errors=True,
+            agent_kwargs={
+                "prefix": """You are an expert Article Selection Agent for Wikipedia.
+
+Your mission: Given a user query and multiple Wikipedia article options, select the BEST article that answers their question.
+
+Selection criteria:
+1. Primary relevance: Does the article directly answer the user's question?
+2. Comprehensiveness: Does it provide thorough information?
+3. Avoid disambiguation pages unless the user specifically wants them
+4. Avoid "List of" articles unless the user wants a list
+5. Prefer main topic articles over sub-topics
+
+Use your tools to preview articles and evaluate their relevance before deciding.""",
+                "suffix": """Begin!
+
+Question: {input}
+{agent_scratchpad}""",
+                "input_variables": ["input", "agent_scratchpad"],
+            },
         )
+        # pylint: enable=C0301
 
     def select_best_article(
         self, user_query: str, article_options: List[str]
@@ -78,11 +99,13 @@ class ArticleSelectionAgent:
                 [f"{i+1}. {title}" for i, title in enumerate(article_options)]
             )
 
+            # pylint: disable=C0301
             agent_input = (
                 f'Select the BEST Wikipedia article that answers this query: "{user_query}"\n\n'
                 f"Available articles:\n{options_str}\n\n"
                 "Respond with ONLY the exact title of the best article."
             )
+            # pylint: enable=C0301
 
             result = self.agent.run(agent_input)
             selected_article = self._extract_article_from_response(

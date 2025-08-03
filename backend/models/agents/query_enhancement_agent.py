@@ -58,6 +58,7 @@ class QueryEnhancementAgent:
 
         memory = ConversationBufferMemory(memory_key="memory", return_messages=True)
 
+        # pylint: disable=C0301
         self.agent = initialize_agent(
             tools=tools,
             llm=self.llm,
@@ -65,11 +66,32 @@ class QueryEnhancementAgent:
             verbose=True,
             memory=memory,
             handle_parsing_errors=True,
+            agent_kwargs={
+                "prefix": """You are an expert Query Enhancement Agent for Wikipedia search optimization.
+
+Your mission: Transform user queries into optimized Wikipedia search terms that find the most relevant articles.
+
+Key principles:
+1. Understand the user's true intent behind their question
+2. Remove unnecessary question words ("who was", "what is", "tell me about")  
+3. Target actual Wikipedia article titles
+4. Make queries more specific and Wikipedia-friendly
+5. Test your enhanced queries to ensure they work
+
+Always test your enhanced query before giving the final answer.""",
+                "suffix": """Begin!
+
+Question: {input}
+{agent_scratchpad}""",
+                "input_variables": ["input", "agent_scratchpad"],
+            },
         )
+        # pylint: enable=C0301
 
     def enhance_query(self, original_query: str) -> Dict[str, Any]:
         """Enhance query using LangChain agent"""
         try:
+            # pylint: disable=C0301
             agent_input = (
                 f"Transform this user query into optimized Wikipedia search terms: "
                 f'"{original_query}"\n\n'
@@ -77,6 +99,7 @@ class QueryEnhancementAgent:
                 "articles to answer this question.\n"
                 "Respond with ONLY the enhanced query."
             )
+            # pylint: enable=C0301
 
             result = self.agent.run(agent_input)
             enhanced_query = self._extract_query_from_response(result, original_query)
@@ -121,6 +144,10 @@ class QueryEnhancementAgent:
             enhanced = query.replace("Who was ", "").replace("who was ", "").strip()
         elif query_lower.startswith("what is "):
             enhanced = query.replace("What is ", "").replace("what is ", "").strip()
+
+        # Remove trailing question mark if present
+        if enhanced.endswith("?"):
+            enhanced = enhanced[:-1].strip()
 
         return {
             "original_query": query,

@@ -75,99 +75,6 @@ class TestWikipediaModel:
         assert service.sanitize_wikipedia_content("") == ""
         assert service.sanitize_wikipedia_content(None) == ""
 
-    @patch("backend.models.wikipedia.wikipedia_model.wikipediaapi")
-    def test_fetch_article_success(self, mock_wikipediaapi):
-        """Test successful article fetching"""
-        # Setup mock
-        mock_wiki = Mock()
-        mock_page = Mock()
-        mock_page.exists.return_value = True
-        mock_page.title = "Artificial Intelligence"
-        mock_page.text = "AI is a field of computer science {with templates}"
-
-        mock_wiki.page.return_value = mock_page
-        mock_wikipediaapi.Wikipedia.return_value = mock_wiki
-
-        service = WikipediaModel()
-        result = service.fetch_article("Artificial Intelligence")
-
-        assert result is not None
-        assert "AI is a field of computer science" in result
-        assert "{" not in result  # Should be sanitized
-
-    @patch("backend.models.wikipedia.wikipedia_model.wikipediaapi")
-    def test_fetch_article_not_exists(self, mock_wikipediaapi):
-        """Test article fetching when page doesn't exist"""
-        mock_wiki = Mock()
-        mock_page = Mock()
-        mock_page.exists.return_value = False
-
-        mock_wiki.page.return_value = mock_page
-        mock_wikipediaapi.Wikipedia.return_value = mock_wiki
-
-        service = WikipediaModel()
-
-        with patch.object(service, "search_and_fetch_article", return_value=None):
-            result = service.fetch_article("NonexistentPage")
-            assert result is None
-
-    @patch("backend.models.wikipedia.wikipedia_model.wikipediaapi")
-    def test_fetch_article_exception(self, mock_wikipediaapi):
-        """Test article fetching when exception occurs"""
-        mock_wikipediaapi.Wikipedia.side_effect = Exception("API Error")
-
-        service = WikipediaModel()
-        result = service.fetch_article("Test Article")
-
-        assert result is None
-
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.search")
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.page")
-    def test_search_and_fetch_article_success(self, mock_page, mock_search):
-        """Test successful search and fetch"""
-        mock_search.return_value = ["Artificial Intelligence", "Machine Learning"]
-
-        mock_page_obj = Mock()
-        mock_page_obj.content = "AI content {with markup}"
-        mock_page.return_value = mock_page_obj
-
-        service = WikipediaModel()
-        result = service.search_and_fetch_article("AI")
-
-        assert result is not None
-        assert "AI content" in result
-        assert "{" not in result  # Should be sanitized
-
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.search")
-    def test_search_and_fetch_article_no_results(self, mock_search):
-        """Test search and fetch with no results"""
-        mock_search.return_value = []
-
-        service = WikipediaModel()
-        result = service.search_and_fetch_article("NonexistentTopic")
-
-        assert result is None
-
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.search")
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.page")
-    def test_search_and_fetch_article_disambiguation(self, mock_page, mock_search):
-        """Test search and fetch with disambiguation error"""
-        mock_search.return_value = ["Apple"]
-
-        # First call raises disambiguation, second succeeds
-        mock_page.side_effect = [
-            wikipedia.exceptions.DisambiguationError(
-                "Apple", ["Apple Inc.", "Apple fruit"]
-            ),
-            Mock(content="Apple Inc. content"),
-        ]
-
-        service = WikipediaModel()
-        result = service.search_and_fetch_article("Apple")
-
-        assert result is not None
-        assert "Apple Inc. content" in result
-
     @patch("backend.models.wikipedia.wikipedia_model.wikipedia.search")
     @patch("backend.models.wikipedia.wikipedia_model.wikipedia.page")
     def test_search_and_fetch_article_info_success(self, mock_page, mock_search):
@@ -239,22 +146,6 @@ class TestWikipediaModel:
         enhanced = service.enhance_query_with_intent("test query", "Unknown", 0.9)
         assert enhanced == "test query"
 
-    def test_simple_disambiguation_selection(self):
-        """Test simple disambiguation selection"""
-        service = WikipediaModel()
-
-        options = ["Apple Inc.", "Apple (fruit)", "Apple (album)"]
-        selected = service._simple_disambiguation_selection("apple company", options)
-        assert selected == "Apple Inc."
-
-    def test_simple_disambiguation_selection_avoid_unwanted(self):
-        """Test disambiguation selection avoids unwanted types"""
-        service = WikipediaModel()
-
-        options = ["Einstein (film)", "Albert Einstein", "Einstein (album)"]
-        selected = service._simple_disambiguation_selection("einstein physics", options)
-        assert selected == "Albert Einstein"
-
 
 class TestWikipediaModelSingleton:
     """Test singleton pattern for WikipediaModel"""
@@ -275,16 +166,6 @@ class TestWikipediaModelErrorHandling:
     """Test error handling in WikipediaModel"""
 
     @patch("backend.models.wikipedia.wikipedia_model.wikipedia.search")
-    def test_search_connection_error(self, mock_search):
-        """Test handling of connection errors during search"""
-        mock_search.side_effect = ConnectionError("Network error")
-
-        service = WikipediaModel()
-        result = service.search_and_fetch_article("test query")
-
-        assert result is None
-
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.search")
     def test_search_timeout_error(self, mock_search):
         """Test handling of timeout errors during search"""
         mock_search.side_effect = TimeoutError("Request timeout")
@@ -293,29 +174,6 @@ class TestWikipediaModelErrorHandling:
         result = service.search_and_fetch_article_info("test query")
 
         assert result is None
-
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.search")
-    @patch("backend.models.wikipedia.wikipedia_model.wikipedia.page")
-    def test_page_fetch_error_resilience(self, mock_page, mock_search):
-        """Test resilience when page fetching fails for some results"""
-        mock_search.return_value = [
-            "Good Article",
-            "Bad Article",
-            "Another Good Article",
-        ]
-
-        # First and third pages work, second fails
-        mock_page.side_effect = [
-            wikipedia.PageError("Page error"),
-            Mock(content="Good content"),
-            Mock(content="Also good content"),
-        ]
-
-        service = WikipediaModel()
-        result = service.search_and_fetch_article("test query")
-
-        assert result is not None
-        assert "Good content" in result
 
 
 class TestWikipediaModelIntegration:

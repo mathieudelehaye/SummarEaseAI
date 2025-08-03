@@ -69,6 +69,7 @@ class QueryGenerationService:
                     self.llm = None
                     return
 
+                # TODO: don't import langchain here, move this to the MVC model layer
                 self.llm = ChatOpenAI(
                     openai_api_key=api_key,
                     model="gpt-3.5-turbo",

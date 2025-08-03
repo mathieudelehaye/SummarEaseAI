@@ -17,6 +17,7 @@ disable=
     W0718,   # Catching too general exception Exception
     R0914,   # Too many local variables
     R0915,   # Too many statements
+    R0911,   # Too many return statements
 
 [TYPECHECK]
 generated-members=

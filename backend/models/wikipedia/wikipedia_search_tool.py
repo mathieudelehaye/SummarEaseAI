@@ -41,19 +41,32 @@ class WikipediaSearchTool:
     """Wikipedia search tools for LangChain agents"""
 
     @staticmethod
-    def search_wikipedia(query: str) -> str:
-        """Search Wikipedia and return results summary."""
+    def search_wikipedia(
+        query: str, results: int = 5, format_style: str = "detailed"
+    ) -> str:
+        """Search Wikipedia and return results summary.
+
+        Args:
+            query: Search query string
+            results: Number of results to return (default 5)
+            format_style: "detailed" for numbered list, "simple" for comma-separated
+        """
         try:
-            search_results = wikipedia.search(query, results=5)
+            search_results = wikipedia.search(query, results=results)
             if not search_results:
                 return f"No Wikipedia articles found for: {query}"
 
+            if format_style == "simple":
+                return (
+                    f"Found {len(search_results)} articles: {', '.join(search_results)}"
+                )
+
+            # Default detailed format
             result_summary = (
                 f"Found {len(search_results)} Wikipedia articles for '{query}':\n"
             )
             for i, title in enumerate(search_results, 1):
                 result_summary += f"{i}. {title}\n"
-
             return result_summary
         except (
             wikipedia.PageError,
@@ -64,15 +77,45 @@ class WikipediaSearchTool:
             return f"Wikipedia search error: {str(e)}"
 
     @staticmethod
-    def get_article_preview(title: str) -> str:
-        """Get a preview of a Wikipedia article."""
+    def get_article_preview(
+        title: str, summary_length: int = 300, include_url: bool = True
+    ) -> str:
+        """Get a preview of a Wikipedia article.
+
+        Args:
+            title: Article title to preview
+            summary_length: Maximum length of summary (default 300)
+            include_url: Whether to include article URL (default True)
+        """
         try:
             page = wikipedia.page(title)
             summary = (
-                page.summary[:300] + "..." if len(page.summary) > 300 else page.summary
+                page.summary[:summary_length] + "..."
+                if len(page.summary) > summary_length
+                else page.summary
             )
-            return f"Article: {page.title}\nURL: {page.url}\nSummary: {summary}"
+
+            if include_url:
+                return f"Article: {page.title}\nURL: {page.url}\nSummary: {summary}"
+
+            return f"Article: {page.title}\nSummary: {summary}"
         except wikipedia.exceptions.DisambiguationError as e:
             return f"Disambiguation page. Options: {e.options[:3]}"
         except (wikipedia.PageError, ConnectionError, ValueError, KeyError) as e:
             return f"Error getting article preview: {str(e)}"
+
+    @staticmethod
+    def suggest_wikipedia(query: str) -> str:
+        """Get Wikipedia search suggestions for a query.
+
+        Args:
+            query: Query string to get suggestions for
+        """
+        try:
+            suggestion = wikipedia.suggest(query)
+            if suggestion:
+                return f"Wikipedia suggests: {suggestion}"
+
+            return f"No suggestions found for: {query}"
+        except (ConnectionError, ValueError) as e:
+            return f"Wikipedia suggest error: {str(e)}"
