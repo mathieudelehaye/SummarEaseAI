@@ -9,6 +9,20 @@ from enum import Enum
 
 from backend.models.llm.llm_client import get_llm_client
 
+try:
+    from backend.models.agents.query_validation_agent import QueryValidationAgent
+    
+    # TODO: don't import langchain here, move this to the MVC model layer 
+    from langchain.chat_models import ChatOpenAI
+    
+    AGENT_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+    ChatOpenAI = None
+    logging.warning(
+        "LangChain not available. Some LLM functionality will be limited."
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +47,22 @@ class QueryProcessingService:
         """Initialize the query processing service"""
         # Service instances
         self.llm_client = get_llm_client()
+        
+        # Initialize validation agent if available
+        self.validation_agent = None
+        if AGENT_AVAILABLE:
+            try:
+                # Create dedicated LLM for validation agent with temperature=0.3 for deterministic responses
+                validation_llm = ChatOpenAI(
+                    api_key=self.llm_client.api_key,
+                    model="gpt-3.5-turbo",
+                    temperature=0.3
+                )
+                self.validation_agent = QueryValidationAgent(validation_llm)
+                logger.info("Query validation agent initialized successfully")
+            except Exception as e:
+                logger.warning("Failed to initialize query validation agent: %s", str(e))
+                self.validation_agent = None
 
         logger.info("Query Processing Service initialized")
 
@@ -84,6 +114,27 @@ class QueryProcessingService:
         Returns:
             _WikipediaQueryViability enum indicating if query is likely to succeed
         """
+
+        # Try to use the agent-based validation first
+        if self.validation_agent:
+            try:
+                logger.info("Using query validation agent for: '%s'", user_query)
+                agent_result = self.validation_agent.validate_query(user_query)
+                
+                viability_str = agent_result.get("viability", "Very likely")
+                if viability_str == "Very likely":
+                    logger.info("Agent validation result: VERY_LIKELY")
+                    return _WikipediaQueryViability.VERY_LIKELY
+                elif viability_str == "Very unlikely":
+                    logger.info("Agent validation result: VERY_UNLIKELY")
+                    return _WikipediaQueryViability.VERY_UNLIKELY
+                else:
+                    logger.warning("Unexpected agent response: '%s', falling back to LLM", viability_str)
+                    
+            except Exception as e:
+                logger.warning("Query validation agent failed: %s, falling back to LLM", str(e))
+
+        # Fallback to original LLM-based validation
         if not self.llm_client.check_openai_availability():
             logger.warning(
                 "OpenAI not available for query validation, assuming VERY_LIKELY"
@@ -91,7 +142,7 @@ class QueryProcessingService:
             return _WikipediaQueryViability.VERY_LIKELY
 
         try:
-            logger.info("Validating Wikipedia query viability for: '%s'", user_query)
+            logger.info("Using fallback LLM validation for: '%s'", user_query)
 
             validation_prompt = (
                 "If I look for an answer to the following question in Wikipedia will I "

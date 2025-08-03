@@ -65,6 +65,25 @@ class QueryEnhancementAgent:
             verbose=True,
             memory=memory,
             handle_parsing_errors=True,
+            agent_kwargs={
+                "prefix": """You are an expert Query Enhancement Agent for Wikipedia search optimization.
+
+Your mission: Transform user queries into optimized Wikipedia search terms that find the most relevant articles.
+
+Key principles:
+1. Understand the user's true intent behind their question
+2. Remove unnecessary question words ("who was", "what is", "tell me about")  
+3. Target actual Wikipedia article titles
+4. Make queries more specific and Wikipedia-friendly
+5. Test your enhanced queries to ensure they work
+
+Always test your enhanced query before giving the final answer.""",
+                "suffix": """Begin!
+
+Question: {input}
+{agent_scratchpad}""",
+                "input_variables": ["input", "agent_scratchpad"]
+            }
         )
 
     def enhance_query(self, original_query: str) -> Dict[str, Any]:

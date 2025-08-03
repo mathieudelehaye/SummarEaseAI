@@ -64,6 +64,25 @@ class ArticleSelectionAgent:
             verbose=True,
             memory=memory,
             handle_parsing_errors=True,
+            agent_kwargs={
+                "prefix": """You are an expert Article Selection Agent for Wikipedia.
+
+Your mission: Given a user query and multiple Wikipedia article options, select the BEST article that answers their question.
+
+Selection criteria:
+1. Primary relevance: Does the article directly answer the user's question?
+2. Comprehensiveness: Does it provide thorough information?
+3. Avoid disambiguation pages unless the user specifically wants them
+4. Avoid "List of" articles unless the user wants a list
+5. Prefer main topic articles over sub-topics
+
+Use your tools to preview articles and evaluate their relevance before deciding.""",
+                "suffix": """Begin!
+
+Question: {input}
+{agent_scratchpad}""",
+                "input_variables": ["input", "agent_scratchpad"]
+            }
         )
 
     def select_best_article(

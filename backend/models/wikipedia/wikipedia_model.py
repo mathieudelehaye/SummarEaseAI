@@ -314,7 +314,6 @@ class WikipediaModel:
         Basic Wikipedia search functionality moved from controller
         Returns search results with title, summary, and URL
         """
-        import pdb; pdb.set_trace()
 
         try:
             # Search for articles
@@ -325,8 +324,6 @@ class WikipediaModel:
                     "query": query,
                     "summary": None,
                 }
-
-            suggestions = wikipedia.suggest(query)
 
             # Get the first article
             article_title = search_results[0]
