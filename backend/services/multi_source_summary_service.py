@@ -6,22 +6,23 @@ Main orchestration service with rate limiting and cost control
 
 import logging
 import sys
-from dotenv import load_dotenv
 from pathlib import Path
 from typing import Any, Dict, List
+
+from dotenv import load_dotenv
 
 # Check imports at runtime
 try:
     from langchain.chains import LLMChain
-    from langchain.prompts import PromptTemplate
     from langchain.chat_models import ChatOpenAI
+    from langchain.prompts import PromptTemplate
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     LANGCHAIN_AVAILABLE = False
-    logging.warning(
-        "LangChain not available. Some LLM functionality will be limited."
-    )
+    logging.warning("LangChain not available. Some LLM functionality will be limited.")
+
+from ml_models.bert_classifier import get_classifier as get_bert_classifier
 
 from backend.models.agents.langchain_agents_model import get_langchain_agents_service
 from backend.models.llm.llm_client import get_llm_client
@@ -29,8 +30,9 @@ from backend.models.llm.openai_summarizer_model import get_openai_api_key
 from backend.models.wikipedia.wikipedia_model import WikipediaModel
 from backend.services.common_source_summary_service import CommonSourceSummaryService
 from backend.services.query_generation_service import get_query_generation_service
-from backend.services.summarization_workflow_service import summarize_article_with_intent
-from ml_models.bert_classifier import get_classifier as get_bert_classifier
+from backend.services.summarization_workflow_service import (
+    summarize_article_with_intent,
+)
 
 # Load environment variables from backend/.env
 backend_dir = Path(__file__).parent.parent
@@ -544,7 +546,7 @@ class MultiSourceAgentService(CommonSourceSummaryService):
                 "Final Comprehensive Summary:"
             )
 
-            # TODO: don't import langchain here, move this to the MVC model layer 
+            # TODO: don't import langchain here, move this to the MVC model layer
             # Create and run the synthesis chain (like original app)
             llm = ChatOpenAI(
                 model="gpt-3.5-turbo",

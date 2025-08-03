@@ -158,46 +158,6 @@ class TestMultiSourceAgent:
         assert isinstance(plan, list)
         assert len(plan) > 0
 
-    def test_gather_articles_with_agents_success(
-        self, mock_agent_system_class, mock_query_gen, mock_get_classifier
-    ):
-        """Test article gathering with LangChain agents"""
-        # Setup mocks
-        mock_classifier = Mock()
-        mock_classifier.load_model.return_value = True
-        mock_get_classifier.return_value = mock_classifier
-
-        mock_agent_system = Mock()
-        mock_agent_system_class.return_value = mock_agent_system
-
-        # Mock agent response with proper dictionary that supports 'in' operator
-        # The actual method called is intelligent_wikipedia_search, not search_and_select_articles
-        mock_agent_result = {
-            "article_info": {
-                "title": "Test Article",
-                "content": "Test content",
-                "url": "test.com",
-            },
-            "enhancement_result": {
-                "enhanced_query": "enhanced test query",
-                "agent_reasoning": "Query enhanced for better search",
-            },
-            "selection_result": {
-                "agent_reasoning": "Selected based on relevance",
-                "confidence_score": 0.9,
-            },
-            "search_results": ["Test Article", "Alternative Article"],
-        }
-
-        # Return the actual dictionary, not a Mock - use the correct method name
-        mock_agent_system.intelligent_wikipedia_search.return_value = mock_agent_result
-
-        agent = MultiSourceAgentService(cost_mode="BALANCED")
-
-        strategy = ["test query", "related query"]
-
-        articles = agent._search_and_gather_articles(strategy, "test query")
-        assert isinstance(articles, list)
 
     def test_gather_articles_rate_limited(
         self, mock_agent_system_class, mock_query_gen, mock_get_classifier

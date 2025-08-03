@@ -18,9 +18,7 @@ try:
 except ImportError:
     LANGCHAIN_AVAILABLE = False
     ChatOpenAI = None
-    logging.warning(
-        "LangChain not available. Some LLM functionality will be limited."
-    )
+    logging.warning("LangChain not available. Some LLM functionality will be limited.")
 
 from backend.models.llm.openai_summarizer_model import get_openai_api_key
 

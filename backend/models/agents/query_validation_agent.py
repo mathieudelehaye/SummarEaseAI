@@ -26,7 +26,8 @@ try:
     from langchain.agents import AgentType, initialize_agent
     from langchain.memory import ConversationBufferMemory
     from langchain.tools import Tool
-    import wikipedia
+
+    from ..wikipedia.wikipedia_search_tool import WikipediaSearchTool
 
     LANGCHAIN_AVAILABLE = True
     WIKIPEDIA_AVAILABLE = True
@@ -54,23 +55,31 @@ class QueryValidationAgent:
         tools = [
             Tool(
                 name="wikipedia_search",
-                func=self._wikipedia_search_wrapper,
-                description="Search Wikipedia for articles matching a query. Returns list of article titles found.",
+                func=lambda query: WikipediaSearchTool.search_wikipedia(
+                    query, format_style="simple"
+                ),
+                description="Search Wikipedia for articles matching a query. "
+                "Returns list of article titles found.",
             ),
             Tool(
                 name="wikipedia_suggest",
-                func=self._wikipedia_suggest_wrapper,
-                description="Get Wikipedia search suggestions for a query. Returns alternative search terms.",
+                func=WikipediaSearchTool.suggest_wikipedia,
+                description="Get Wikipedia search suggestions for a query. "
+                "Returns alternative search terms.",
             ),
             Tool(
                 name="get_article_preview",
-                func=self._article_preview_wrapper,
-                description="Get a preview of a Wikipedia article by title to check its actual content and relevance.",
+                func=lambda title: WikipediaSearchTool.get_article_preview(
+                    title, summary_length=200, include_url=False
+                ),
+                description="Get a preview of a Wikipedia article by title to check "
+                "its actual content and relevance.",
             ),
         ]
 
         memory = ConversationBufferMemory(memory_key="memory", return_messages=True)
 
+        # pylint: disable=C0301
         self.agent = initialize_agent(
             tools=tools,
             llm=self.llm,
@@ -96,56 +105,15 @@ CRITICAL: Finding articles with unrelated content should result in 'Very unlikel
 
 Question: {input}
 {agent_scratchpad}""",
-                "input_variables": ["input", "agent_scratchpad"]
-            }
+                "input_variables": ["input", "agent_scratchpad"],
+            },
         )
-
-    # TODO: move wrapper to wikipedia_search_tool.py and merge with search_wikipedia
-    def _wikipedia_search_wrapper(self, query: str) -> str:
-        """Wrapper for wikipedia.search function"""
-        try:
-            results = wikipedia.search(query, results=5)
-            if not results:
-                return f"No Wikipedia articles found for: {query}"
-            
-            return f"Found {len(results)} articles: {', '.join(results)}"
-        except (
-            wikipedia.PageError,
-            wikipedia.DisambiguationError,
-            ConnectionError,
-            ValueError,
-        ) as e:
-            return f"Wikipedia search error: {str(e)}"
-
-    # TODO: move wrapper to wikipedia_search_tool.py
-    def _wikipedia_suggest_wrapper(self, query: str) -> str:
-        """Wrapper for wikipedia.suggest function"""
-        try:
-            suggestion = wikipedia.suggest(query)
-            if suggestion:
-                return f"Wikipedia suggests: {suggestion}"
-            else:
-                return f"No suggestions found for: {query}"
-        except (ConnectionError, ValueError) as e:
-            return f"Wikipedia suggest error: {str(e)}"
-
-    # TODO: move wrapper to wikipedia_search_tool.py and merge with get_article_preview
-    def _article_preview_wrapper(self, title: str) -> str:
-        """Wrapper for wikipedia article preview to check content relevance"""
-        try:
-            page = wikipedia.page(title)
-            summary = (
-                page.summary[:200] + "..." if len(page.summary) > 200 else page.summary
-            )
-            return f"Article: {page.title}\nSummary: {summary}"
-        except wikipedia.exceptions.DisambiguationError as e:
-            return f"Disambiguation page. Options: {e.options[:3]}"
-        except (wikipedia.PageError, ConnectionError, ValueError, KeyError) as e:
-            return f"Error getting article preview: {str(e)}"
+        # pylint: enable=C0301
 
     def validate_query(self, user_query: str) -> Dict[str, Any]:
         """Validate if query is likely to find relevant Wikipedia articles"""
         try:
+            # pylint: disable=C0301
             agent_input = (
                 f'Determine if this query is likely to find RELEVANT Wikipedia articles: "{user_query}"\n\n'
                 "IMPORTANT: You must check actual content relevance, not just existence of search results.\n\n"
@@ -158,6 +126,7 @@ Question: {input}
                 "- 'Very likely' if you find articles with content genuinely relevant to the query\n"
                 "- 'Very unlikely' if no articles contain relevant content (even if unrelated articles exist)"
             )
+            # pylint: enable=C0301
 
             result = self.agent.run(agent_input)
             viability = self._extract_viability_from_response(result)
@@ -183,15 +152,18 @@ Question: {input}
     def _extract_viability_from_response(self, response: str) -> str:
         """Extract viability assessment from agent response"""
         response_lower = response.strip().lower()
-        
+
         if "very likely" in response_lower:
             return "Very likely"
-        elif "very unlikely" in response_lower:
+
+        if "very unlikely" in response_lower:
             return "Very unlikely"
-        else:
-            # Default to likely if unclear
-            logger.warning(f"Unclear validation response: {response}, defaulting to 'Very likely'")
-            return "Very likely"
+
+        # Default to likely if unclear
+        logger.warning(
+            "Unclear validation response: %s, defaulting to 'Very likely'", response
+        )
+        return "Very likely"
 
     def _fallback_validation(self, query: str) -> Dict[str, Any]:
         """Fallback validation when agent fails"""

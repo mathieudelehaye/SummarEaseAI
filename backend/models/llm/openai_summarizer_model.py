@@ -14,10 +14,10 @@ from dotenv import load_dotenv
 # LangChain imports
 try:
     from langchain.chains import LLMChain
+    from langchain.chat_models import ChatOpenAI
     from langchain.prompts import PromptTemplate
     from langchain.schema import BaseOutputParser
     from langchain.text_splitter import RecursiveCharacterTextSplitter
-    from langchain.chat_models import ChatOpenAI
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
@@ -27,9 +27,7 @@ except ImportError:
     ChatOpenAI = None
     PromptTemplate = None
     RecursiveCharacterTextSplitter = None
-    logging.warning(
-        "LangChain not available. OpenAI summarization will be disabled."
-    )
+    logging.warning("LangChain not available. OpenAI summarization will be disabled.")
 
 # Load environment variables
 load_dotenv()
