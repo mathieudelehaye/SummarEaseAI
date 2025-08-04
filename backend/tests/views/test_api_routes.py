@@ -96,10 +96,10 @@ class TestAPIEndpoints:
     def test_summarize_endpoint_success(self, mock_controller, client):
         """Test successful single-source summarization"""
         # Mock service response
-        mock_controller.summarize_single_source.return_value = {
+        mock_controller.summarize.return_value = {
             "query": "Apollo 11",
             "summary": "Apollo 11 was the first manned mission to land on the Moon.",
-            "intent": {"category": "History", "confidence": 0.85},
+            "intent": "History",
             "method": "single_source",
             "total_sources": 1,
             "summary_length": 500,
@@ -142,7 +142,7 @@ class TestAPIEndpoints:
     def test_summarize_multi_source_success(self, mock_controller, client):
         """Test successful multi-source summarization"""
         # Mock service response
-        mock_controller.summarize_multi_source_with_agents.return_value = {
+        mock_controller.summarize.return_value = {
             "query": "Space exploration",
             "summary": "Space exploration has been a major human endeavor.",
             "intent": "Science",
@@ -151,7 +151,6 @@ class TestAPIEndpoints:
             "total_sources": 3,
             "summary_length": 800,
             "summary_lines": 8,
-            "agent_powered": True,
             "articles": [
                 {
                     "title": "Space Exploration",
@@ -190,7 +189,7 @@ class TestAPIEndpoints:
     def test_summarize_multi_source_error(self, mock_controller, client):
         """Test multi-source summarization with error"""
         # Mock service response with error
-        mock_controller.summarize_multi_source_with_agents.return_value = {
+        mock_controller.summarize.return_value = {
             "error": "No articles found for query"
         }
 

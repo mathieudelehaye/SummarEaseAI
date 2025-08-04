@@ -314,54 +314,112 @@ class WikipediaModel:
         Basic Wikipedia search functionality moved from controller
         Returns search results with title, summary, and URL
         """
+        logger.info("🔍 Starting Wikipedia search for query: '%s'", query)
 
         try:
             # Search for articles
+            logger.info("📡 Calling wikipedia.search() with query: '%s'", query)
             search_results = wikipedia.search(query, results=max_results)
+            logger.info("📋 Search results: %s", search_results)
+
             if not search_results:
+                logger.warning("⚠️ No search results found for query: '%s'", query)
                 return {
                     "error": "No Wikipedia articles found",
                     "query": query,
                     "summary": None,
                 }
 
-            # Get the first article
             article_title = search_results[0]
-            page = wikipedia.page(article_title)
+            logger.info("📄 Selected first article: '%s'", article_title)
 
-            # Get summary (first few sentences)
-            summary = wikipedia.summary(article_title, sentences=5)
+            # Try to get the page - first with article_title, then fallback to query
+            # Then try to get summary (first few sentences)
+            page = None
+            summary = ""
+            try:
+                logger.info("🔗 Getting Wikipedia page for: '%s'", article_title)
+                page = wikipedia.page(article_title)
+                logger.info(
+                    "✅ Successfully retrieved page with article_title: '%s'",
+                    page.title,
+                )
 
-            return {
+                logger.info("📝 Getting summary for: '%s'", article_title)
+                summary = wikipedia.summary(article_title, sentences=5)
+            except (
+                wikipedia.exceptions.PageError,
+                wikipedia.exceptions.DisambiguationError,
+            ) as e:
+                logger.warning(
+                    "⚠️ Failed to get page with article_title '%s': %s",
+                    article_title,
+                    str(e),
+                )
+                logger.info("🔄 Falling back to original query: '%s'", query)
+                page = wikipedia.page(query)
+                logger.info(
+                    "✅ Successfully retrieved page with query fallback: '%s'",
+                    page.title,
+                )
+
+                logger.info("📝 Getting summary for: '%s'", query)
+                summary = wikipedia.summary(query, sentences=5)
+
+            logger.info(
+                "📏 Summary length: %d characters", len(summary) if summary else 0
+            )
+
+            result = {
                 "query": query,
                 "title": article_title,
                 "summary": summary,
-                "url": page.url,
+                "url": page.url if page else "",
                 "status": "success",
             }
+            logger.info("✅ Wikipedia search completed successfully")
+            return result
 
         except wikipedia.exceptions.DisambiguationError as e:
             # Handle disambiguation by taking the first option
+            logger.warning(
+                "⚠️ Disambiguation error for '%s', options: %s", query, e.options[:3]
+            )
             try:
-                page = wikipedia.page(e.options[0])
-                summary = wikipedia.summary(e.options[0], sentences=5)
-                return {
+                selected_option = e.options[0]
+                logger.info("🔄 Trying disambiguation option: '%s'", selected_option)
+                page = wikipedia.page(selected_option)
+                summary = wikipedia.summary(selected_option, sentences=5)
+                result = {
                     "query": query,
-                    "title": e.options[0],
+                    "title": selected_option,
                     "summary": summary,
                     "url": page.url,
                     "status": "success",
                 }
+                logger.info("✅ Disambiguation resolved successfully")
+                return result
             except (wikipedia.PageError, KeyError, ValueError) as inner_e:
-                logger.error("Error handling disambiguation: %s", inner_e)
+                logger.error("❌ Error handling disambiguation: %s", inner_e)
                 return {
                     "error": f"Disambiguation error: {str(inner_e)}",
                     "query": query,
                     "summary": None,
                 }
         except (ConnectionError, TimeoutError) as e:
-            logger.error("Error in Wikipedia search: %s", e)
+            logger.error("❌ Connection/Timeout error for query '%s': %s", query, e)
             return {"error": str(e), "query": query, "summary": None}
+        except Exception as e:
+            logger.error(
+                "❌ Unexpected error in Wikipedia search for query '%s': %s",
+                query,
+                str(e),
+            )
+            return {
+                "error": f"Unexpected error: {str(e)}",
+                "query": query,
+                "summary": None,
+            }
 
 
 class _WikipediaModelSingleton:

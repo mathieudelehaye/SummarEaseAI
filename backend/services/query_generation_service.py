@@ -9,16 +9,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
+from backend.exceptions.common_service_exceptions import COMMON_SERVICE_EXCEPTIONS
 from backend.models.llm.llm_client import get_llm_client
-
-# Common exceptions for service error handling
-COMMON_SERVICE_EXCEPTIONS = (
-    ValueError,
-    KeyError,
-    AttributeError,
-    ConnectionError,
-    TimeoutError,
-)
 
 # Initialize service environment
 repo_root = Path(__file__).resolve().parent.parent.parent

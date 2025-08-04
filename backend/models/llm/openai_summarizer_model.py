@@ -8,7 +8,6 @@ import logging
 import os
 from typing import List, Optional
 
-# Third-party imports
 from dotenv import load_dotenv
 
 # LangChain imports
@@ -149,7 +148,7 @@ def chunk_text_for_openai(text: str, max_chunk_tokens: int = 12000) -> List[str]
         return chunks
 
 
-def create_summarization_chain():
+def create_summarization_chain() -> Optional[LLMChain]:
     """Create a LangChain summarization chain"""
     if not LANGCHAIN_AVAILABLE or not ChatOpenAI or not LLMChain or not PromptTemplate:
         return None
@@ -195,7 +194,7 @@ def create_summarization_chain():
         return None
 
 
-def create_line_limited_chain(max_lines: int = 30):
+def create_line_limited_chain(max_lines: int = 30) -> Optional[LLMChain]:
     """Create a summarization chain with line limit"""
     if not LANGCHAIN_AVAILABLE or not ChatOpenAI or not LLMChain or not PromptTemplate:
         return None
@@ -238,7 +237,7 @@ def create_line_limited_chain(max_lines: int = 30):
         return None
 
 
-def create_intent_aware_chain(intent: str, confidence: float):
+def create_intent_aware_chain(intent: str, confidence: float) -> Optional[LLMChain]:
     """Create a summarization chain tailored to the detected intent"""
     if not LANGCHAIN_AVAILABLE or not ChatOpenAI or not LLMChain or not PromptTemplate:
         return None

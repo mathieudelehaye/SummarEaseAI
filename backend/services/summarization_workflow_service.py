@@ -5,7 +5,6 @@ Summarization module using LangChain and OpenAI for intelligent Wikipedia articl
 
 import logging
 
-# Third-party imports first
 from dotenv import load_dotenv
 
 # First-party imports
@@ -66,12 +65,6 @@ def _validate_line_limited_input(
     article_text: str, max_lines: int
 ) -> tuple[str | None, int]:
     """Validate input for line-limited summarization and return error message if invalid."""
-    if not LANGCHAIN_AVAILABLE:
-        return (
-            "Error: LangChain not available. Please install langchain and "
-            "langchain-openai packages.",
-            max_lines,
-        )
 
     if not article_text or len(article_text.strip()) == 0:
         return "Error: No article content provided", max_lines
@@ -452,34 +445,16 @@ def summarize_article_with_intent(
             "confidence": confidence,
         }
 
-    # Try intent-aware OpenAI summarization first
-    if LANGCHAIN_AVAILABLE:
-        api_key = get_openai_api_key()
-        if api_key:
-            try:
-                # Try chunked processing first for long articles
-                chunks_result = _process_intent_aware_chunks(
-                    article_text, intent, confidence
-                )
-                if chunks_result:
-                    return chunks_result
+    # Try intent-aware OpenAI summarization first:
+    # First try chunked processing for long articles
+    chunks_result = _process_intent_aware_chunks(article_text, intent, confidence)
+    if chunks_result:
+        return chunks_result
 
-                # Try single processing for normal articles
-                single_result = _process_intent_aware_single(
-                    article_text, intent, confidence
-                )
-                if single_result:
-                    return single_result
-
-            except (
-                ValueError,
-                KeyError,
-                AttributeError,
-                ConnectionError,
-                TimeoutError,
-                TypeError,
-            ) as e:
-                logger.error("Error in intent-aware OpenAI summarization: %s", str(e))
+    # Otherwise try single processing for normal articles
+    single_result = _process_intent_aware_single(article_text, intent, confidence)
+    if single_result:
+        return single_result
 
     # Fallback to regular summarization
     logger.info("Falling back to regular summarization")

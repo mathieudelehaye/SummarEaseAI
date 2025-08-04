@@ -13,12 +13,16 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
+from ml_models.bert_intents import BERT_CATEGORIES
 
 from backend.controllers.request_validation import (
     validate_multi_source_request,
     validate_summarize_request,
 )
-from backend.controllers.summarization_controller import get_summarization_controller
+from backend.controllers.summarization_controller import (
+    SummarizationMethod,
+    get_summarization_controller,
+)
 
 # Configure logging before any other imports
 logging.basicConfig(
@@ -47,8 +51,7 @@ CORS(app)
 # Initialize service with proper constant naming
 SUMMARIZATION_CONTROLLER = get_summarization_controller()
 
-# BERT categories for display
-BERT_CATEGORIES = ["History", "Music", "Science", "Sports", "Technology", "Finance"]
+# BERT special categories for display
 SPECIAL_CATEGORIES = ["NO DETECTED"]
 
 # Log initialization status
@@ -168,10 +171,11 @@ def summarize():
             return jsonify(validation_error[0]), validation_error[1]
 
         query = data["query"].strip()
-        max_lines = data.get("max_lines", 30)
 
         # Delegate to service
-        result = SUMMARIZATION_CONTROLLER.summarize_single_source(query, max_lines)
+        result = SUMMARIZATION_CONTROLLER.summarize(
+            query, SummarizationMethod.SINGLE_SOURCE
+        )
 
         # Handle service errors
         if "error" in result:
@@ -179,21 +183,12 @@ def summarize():
                 return jsonify(result), 404
             return jsonify(result), 500
 
-        # Extract intent from the result (it might be nested)
-        intent_data = result.get("intent", {})
-        if isinstance(intent_data, dict):
-            intent = intent_data.get("category", "Unknown")
-            confidence = intent_data.get("confidence", 0.0)
-        else:
-            intent = intent_data
-            confidence = result.get("confidence", 0.0)
-
         # Format response to match test expectations
         response = {
             "query": result.get("query", query),
             "summary": result.get("summary", ""),
-            "intent": intent,
-            "confidence": confidence,
+            "intent": result.get("intent", ""),
+            "confidence": result.get("confidence", 0.0),
             "method": result.get("method", "single_source"),
             "total_sources": result.get("total_sources", 1),
             "summary_length": result.get("summary_length", 0),
@@ -219,12 +214,11 @@ def summarize_multi_source():
             return jsonify(validation_error[0]), validation_error[1]
 
         query = data["query"].strip()
-        max_lines = data.get("max_lines", 30)
 
         # Delegate to service
-        result = SUMMARIZATION_CONTROLLER.summarize_multi_source_with_agents(
+        result = SUMMARIZATION_CONTROLLER.summarize(
             query=query,
-            max_lines=max_lines,
+            source_type=SummarizationMethod.MULTI_SOURCE,
         )
 
         # Handle service errors
@@ -252,7 +246,6 @@ def summarize_multi_source():
             "total_sources": result.get("total_sources", 0),
             "summary_length": result.get("summary_length", 0),
             "summary_lines": result.get("summary_lines", 0),
-            "agent_powered": result.get("agent_powered", False),
             "articles": result.get("articles", []),
             "usage_stats": result.get("usage_stats", {}),
             "cost_tracking": result.get("cost_tracking", {}),
