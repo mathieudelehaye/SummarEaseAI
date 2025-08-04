@@ -39,6 +39,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy MVC structured backend files (only production-needed files)
 COPY backend/__init__.py backend/
 
+# Exceptions
+COPY backend/exceptions/__init__.py backend/exceptions/
+COPY backend/exceptions/common_service_exceptions.py backend/exceptions/
+COPY backend/exceptions/summarization_exceptions.py backend/exceptions/
+
 # Controllers
 COPY backend/controllers/__init__.py backend/controllers/
 COPY backend/controllers/request_validation.py backend/controllers/
@@ -81,9 +86,10 @@ COPY backend/views/__init__.py backend/views/
 COPY backend/views/api_routes.py backend/views/
 
 # ML Models
+COPY ml_models/__init__.py ml_models/
 COPY ml_models/bert_classifier.py ml_models/
+COPY ml_models/bert_intents.py ml_models/
 COPY ml_models/intent_classifier.py ml_models/
-
 # Create model directory and copy only needed model files
 RUN mkdir -p /app/ml_models/bert_gpu_model
 COPY ml_models/bert_gpu_model/config.json \

@@ -5,13 +5,8 @@ Main orchestration service with rate limiting and cost control
 """
 
 import logging
-import sys
-from pathlib import Path
 from typing import Any, Dict, List
 
-from dotenv import load_dotenv
-
-# Check imports at runtime
 try:
     from langchain.chains import LLMChain
     from langchain.chat_models import ChatOpenAI
@@ -22,8 +17,7 @@ except ImportError:
     LANGCHAIN_AVAILABLE = False
     logging.warning("LangChain not available. Some LLM functionality will be limited.")
 
-from ml_models.bert_classifier import get_classifier as get_bert_classifier
-
+from backend.exceptions.common_service_exceptions import COMMON_SERVICE_EXCEPTIONS
 from backend.models.agents.langchain_agents_model import get_langchain_agents_service
 from backend.models.llm.llm_client import get_llm_client
 from backend.models.llm.openai_summarizer_model import get_openai_api_key
@@ -33,25 +27,6 @@ from backend.services.query_generation_service import get_query_generation_servi
 from backend.services.summarization_workflow_service import (
     summarize_article_with_intent,
 )
-
-# Load environment variables from backend/.env
-backend_dir = Path(__file__).parent.parent
-env_path = backend_dir / ".env"
-load_dotenv(env_path)
-
-# Common exceptions for service error handling
-COMMON_SERVICE_EXCEPTIONS = (
-    ValueError,
-    KeyError,
-    AttributeError,
-    ConnectionError,
-    TimeoutError,
-)
-
-# Add project root to path
-repo_root = Path(__file__).resolve().parent.parent.parent
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +94,7 @@ class MultiSourceAgentService(CommonSourceSummaryService):
 
         # Configuration objects to reduce instance attributes
         self.config = {
-            "bert_model_path": repo_root / "ml_models" / "bert_gpu_model",
+            **self.common_config,
             "cost_mode": cost_mode.upper(),
             "limits": RateLimitConfig.get_limits_for_mode(cost_mode.upper()),
         }
@@ -127,18 +102,10 @@ class MultiSourceAgentService(CommonSourceSummaryService):
         # Service instances (merge with common services)
         self.services = {
             **self.common_services,
-            "bert_classifier": get_bert_classifier(str(self.config["bert_model_path"])),
             "llm_client": get_llm_client(),
             "query_generator": get_query_generation_service(),
             "agents_service": get_langchain_agents_service(),
         }
-
-        # Initialize BERT model
-        self.bert_model_loaded = (
-            self.services["bert_classifier"].load_model()
-            if self.services["bert_classifier"]
-            else False
-        )
 
         logger.info(
             "🎛️ Multi-Source Agent Service initialized in %s mode",
@@ -169,7 +136,6 @@ class MultiSourceAgentService(CommonSourceSummaryService):
 
         # Step 1: First validate if the query is likely to find Wikipedia articles
         if not self._validate_query(user_query):
-            logger.warning("⚠️ Query is not likely to find relevant Wikipedia articles")
             return self._create_empty_response(
                 "Query is not likely to find relevant Wikipedia articles",
                 user_query,
@@ -202,58 +168,46 @@ class MultiSourceAgentService(CommonSourceSummaryService):
 
         # Step 5: Summarize articles
         try:
-            summary_result = self._create_multi_source_summary(
+            result = self._create_multi_source_summary(
                 articles_data, user_query, detected_intent
             )
 
             # Add metadata
-            summary_result.update(
+            summary_text = result.get("synthesis", "")
+            result.update(
                 {
-                    "user_query": user_query,
-                    "detected_intent": detected_intent,
-                    "cost_mode": self.config["cost_mode"],
-                    "usage_stats": self._get_usage_stats(),
-                    "articles_used": len(articles_data),
+                    "query": user_query,
+                    "method": "multi_source_agents",
+                    "service_layer": "multi_source_summary_service",
+                    "bert_model_available": self.bert_model_loaded,
+                    "intent": detected_intent,
+                    "summary": summary_text,
+                    "summary_length": len(summary_text),
+                    "summary_lines": (
+                        len(summary_text.split("\n")) if summary_text else 0
+                    ),
+                    "total_sources": result.get("articles_used", 0),
+                    "wikipedia_pages": [
+                        article.get("title", "")
+                        for article in result.get("individual_summaries", [])
+                    ],
+                    "articles": result.get("individual_summaries", []),
                     "search_queries_used": len(search_queries),
+                    "confidence": 0.9,  # Default confidence for multi-source results
+                    "cost_mode": self.config["cost_mode"],
+                    "usage_stats": result.get("usage_stats", {}),
+                    "cost_tracking": result.get("usage_stats", {}),
                 }
             )
 
             logger.info("✅ Multi-source summary completed successfully")
-            return summary_result
+            return result
 
         except COMMON_SERVICE_EXCEPTIONS as e:
             logger.error("❌ Summary creation failed: %s", str(e))
             return self._create_empty_response(
                 f"Summary creation failed: {str(e)}", user_query, detected_intent
             )
-
-    def _classify_intent(self, user_query: str, user_intent: str = None) -> str:
-        """Classify user intent using BERT or fallback methods"""
-        if user_intent:
-            return user_intent
-
-        if self.bert_model_loaded:
-            try:
-                # Use correct BERT classifier method: predict() returns (intent, confidence)
-                intent, _ = self.services["bert_classifier"].predict(user_query)
-                return intent.lower() if intent else "general_knowledge"
-            except (ValueError, AttributeError, KeyError, RuntimeError) as e:
-                logger.warning("⚠️ BERT classification failed: %s", str(e))
-
-        # Fallback intent classification
-        return self._fallback_intent_classification(user_query)
-
-    def _fallback_intent_classification(self, query: str) -> str:
-        """Simple rule-based intent classification"""
-        query_lower = query.lower()
-
-        if any(word in query_lower for word in ["who is", "who was", "who were"]):
-            return "biography"
-        if any(word in query_lower for word in ["what is", "what are", "define"]):
-            return "definition"
-        if any(word in query_lower for word in ["when did", "when was", "date"]):
-            return "historical_event"
-        return "general_knowledge"
 
     def _generate_search_queries(self, user_query: str, intent: str) -> List[str]:
         """Generate search queries using various methods"""
@@ -499,33 +453,37 @@ class MultiSourceAgentService(CommonSourceSummaryService):
 
             # Create intent-specific synthesis prompt (like original app)
             intent_specific_instructions = {
-                "music": (
-                    "Focus on the band's formation, key members, musical style, "
-                    "major albums, cultural impact, and legacy in popular music."
-                ),
-                "biography": (
-                    "Focus on the person's life story, major achievements, "
-                    "contributions, and historical significance."
-                ),
                 "history": (
                     "Focus on causes, key events, major figures, consequences, "
-                    "and historical significance."
+                    "and historical significance. Include dates, timeline, and impact."
+                ),
+                "music": (
+                    "Focus on the artist's/band's formation, key members, musical style, "
+                    "major albums, cultural impact, and legacy in popular music."
                 ),
                 "science": (
-                    "Focus on scientific principles, discoveries, applications, "
-                    "and impact on the field."
+                    "Focus on scientific principles, discoveries, research findings, "
+                    "applications, and impact on the scientific field."
+                ),
+                "sports": (
+                    "Focus on achievements, career highlights, team performance, "
+                    "records, championships, and impact on the sport."
                 ),
                 "technology": (
-                    "Focus on how the technology works, development, applications, "
-                    "and impact on society."
+                    "Focus on how the technology works, development history, "
+                    "applications, innovations, and impact on society."
                 ),
-                "general": (
+                "finance": (
+                    "Focus on financial concepts, market impact, economic principles, "
+                    "investment strategies, and business implications."
+                ),
+                "default": (
                     "Focus on the main topics, key information, and overall significance."
                 ),
             }
 
             instruction = intent_specific_instructions.get(
-                intent.lower(), intent_specific_instructions["general"]
+                intent.lower(), intent_specific_instructions["default"]
             )
 
             prompt_template = (
@@ -610,15 +568,6 @@ class MultiSourceAgentService(CommonSourceSummaryService):
         )
 
         return "\n".join(synthesis_parts)
-
-    def set_cost_mode(self, mode: str):
-        """Change cost control mode"""
-        self.config["cost_mode"] = mode.upper()
-        self.config["limits"] = RateLimitConfig.get_limits_for_mode(
-            self.config["cost_mode"]
-        )
-        logger.info("🎛️ Cost mode changed to %s", self.config["cost_mode"])
-        logger.info("📊 New limits: %s", self.config["limits"])
 
 
 class _MultiSourceAgentServiceSingleton:

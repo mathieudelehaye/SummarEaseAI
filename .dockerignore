@@ -70,15 +70,3 @@ docker-compose.yml
 *.pid
 *.gz
 *.zip
-
-# Keep only necessary model files
-ml_models/*
-!ml_models/bert_classifier.py
-!ml_models/intent_classifier.py
-!ml_models/bert_gpu_model/config.json
-!ml_models/bert_gpu_model/model.safetensors
-!ml_models/bert_gpu_model/tokenizer.json
-!ml_models/bert_gpu_model/vocab.txt
-!ml_models/bert_gpu_model/special_tokens_map.json
-!ml_models/bert_gpu_model/tokenizer_config.json
-!ml_models/bert_gpu_model/label_encoder.pkl 

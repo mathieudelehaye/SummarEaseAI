@@ -4,10 +4,14 @@ Handles summarization requests and coordinates with services
 """
 
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict
 
 from dotenv import load_dotenv
+from ml_models.bert_intents import BERT_CATEGORIES
+
+from backend.exceptions.summarization_exceptions import ServiceUnavailableError
 
 # Import BERT classifier at module level to avoid import-outside-toplevel
 try:
@@ -42,6 +46,14 @@ except ImportError:
     get_single_source_summary_service = None
     logging.warning("SingleSourceAgentService not available")
 
+
+class SummarizationMethod(Enum):
+    """Internal enum for summarization method selection"""
+
+    MULTI_SOURCE = "Multi-source"
+    SINGLE_SOURCE = "Single-source"
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,16 +74,8 @@ class SummarizationController:
         self._init_bert_classifier()
 
         # Define categories
-        self.bert_categories = [
-            "History",
-            "Music",
-            "Science",
-            "Sports",
-            "Technology",
-            "Finance",
-        ]
+        self.bert_categories = BERT_CATEGORIES
         self.special_categories = ["NO DETECTED"]
-        self.all_categories = self.bert_categories + self.special_categories
 
         logger.info("✅ SummarizationController initialized successfully")
 
@@ -108,7 +112,7 @@ class SummarizationController:
             self.bert_classifier = None
             self.bert_model_loaded = False
 
-    def predict_intent_bert(self, text: str) -> Dict[str, Any]:
+    def classify_intent(self, text: str) -> Dict[str, Any]:
         """Predict intent using BERT classifier"""
         if not hasattr(self, "bert_model_loaded") or not self.bert_model_loaded:
             return {
@@ -139,44 +143,53 @@ class SummarizationController:
                 "all_scores": {},
             }
 
-    def summarize_single_source(
+    def summarize(
         self,
         query: str,
-        max_lines: int = 30,
-        model_type: str = "wikipedia",
-        use_intent: bool = True,
+        source_type: SummarizationMethod = SummarizationMethod.SINGLE_SOURCE,
     ) -> Dict[str, Any]:
-        """Summarize using single source with proper service delegation"""
+        """Summarize using the best available method with specific error handling"""
         try:
-            # Always delegate to service layer (proper MVC separation)
-            service = get_single_source_summary_service()
-            result = service.get_single_source_summary(
-                query=query,
-                model_type=model_type,
-                use_intent=use_intent,
-            )
+            if (
+                not MULTI_SOURCE_AVAILABLE
+                and source_type == SummarizationMethod.MULTI_SOURCE
+            ):
+                raise ServiceUnavailableError(
+                    "Multi-source summarization service is not available"
+                )
 
-            logger.info("✅ Single-source summarization delegated to service layer")
-            return result
+            if (
+                not SINGLE_SOURCE_AVAILABLE
+                and source_type == SummarizationMethod.SINGLE_SOURCE
+            ):
+                raise ServiceUnavailableError(
+                    "Single-source summarization service is not available"
+                )
 
-        except Exception as e:
-            logger.error("❌ Error in single source service delegation: %s", str(e))
+            if source_type == SummarizationMethod.MULTI_SOURCE:
+                return self._summarize_multi_source(query)
+
+            return self._summarize_single_source(query)
+
+        except ServiceUnavailableError as e:
+            logger.error("Service unavailable: %s", str(e))
             return {
-                "error": str(e),
+                "error": f"Service unavailable: {str(e)}",
+                "error_type": "service_unavailable",
                 "query": query,
                 "summary": None,
-                "method": "service_delegation_error",
+                "method": "service_unavailable",
             }
 
-    def get_health_status(self) -> Dict[str, Any]:
-        """Get application health status"""
-        return {
-            "status": "healthy",
-            "bert_model_loaded": getattr(self, "bert_model_loaded", False),
-            "categories": self.bert_categories,
-            "repo_root": str(self.repo_root),
-            "wikipedia_available": True,
-        }
+        except Exception as e:
+            logger.error("Unexpected error in summarization: %s", str(e))
+            return {
+                "error": f"An unexpected error occurred: {str(e)}",
+                "error_type": "unexpected",
+                "query": query,
+                "summary": None,
+                "method": "unexpected_error",
+            }
 
     def get_system_status(self) -> Dict[str, Any]:
         """Get system status for frontend"""
@@ -194,72 +207,27 @@ class SummarizationController:
             "status": "healthy",
         }
 
-    def classify_intent(self, text: str) -> Dict[str, Any]:
-        """Classify intent using BERT model"""
-        return self.predict_intent_bert(text)
-
-    def summarize_multi_source_with_agents(
+    def _summarize_single_source(
         self,
         query: str,
-        max_lines: int = 10,
     ) -> Dict[str, Any]:
-        """Summarize using multi-source approach with agent integration"""
-        if not MULTI_SOURCE_AVAILABLE or not get_multi_source_summary_service:
-            logger.warning(
-                "MultiSourceAgentService not available, falling back to single source"
-            )
-            result = self.summarize_single_source(query, max_lines)
-            result["method"] = "single_source_fallback"
-            result["agent_powered"] = False
-            result["total_sources"] = 1
-            return result
+        """Summarize using single source method"""
+        service = get_single_source_summary_service()
+        return service.get_single_source_summary(
+            user_query=query,
+            user_intent=None,  # Let the service detect intent automatically
+        )
 
-        try:
-            # Get the multi-source agent service
-            agent_service = get_multi_source_summary_service()
-
-            # Call the agent service with proper parameters (note: uses user_query not query)
-            result = agent_service.get_multi_source_summary(
-                user_query=query,
-                user_intent=None,  # Let the service detect intent automatically
-            )
-
-            # Ensure proper response format
-            if "error" not in result:
-                # Format the response to match expected API format
-                formatted_result = {
-                    "query": result.get("user_query", query),
-                    "summary": result.get("synthesis", ""),
-                    "method": "multi_source_agents",
-                    "agent_powered": True,
-                    "total_sources": result.get("articles_used", 0),
-                    "articles": result.get("individual_summaries", []),
-                    "intent": result.get("detected_intent", "Unknown"),
-                    "confidence": 0.9,  # Default confidence for agent-powered results
-                    "usage_stats": result.get("usage_stats", {}),
-                    "cost_tracking": result.get("usage_stats", {}),
-                    "summary_length": len(result.get("synthesis", "")),
-                    "summary_lines": len(result.get("synthesis", "").split("\n")),
-                    "wikipedia_pages": [
-                        article.get("title", "")
-                        for article in result.get("individual_summaries", [])
-                    ],
-                }
-
-                logger.info("✅ Multi-source summarization completed with agents")
-                return formatted_result
-
-            return result
-
-        except Exception as e:
-            logger.error("❌ Error in multi-source agent summarization: %s", str(e))
-            # Fallback to single source on error
-            result = self.summarize_single_source(query, max_lines)
-            result["method"] = "single_source_error_fallback"
-            result["agent_powered"] = False
-            result["total_sources"] = 1
-            result["error_details"] = str(e)
-            return result
+    def _summarize_multi_source(
+        self,
+        query: str,
+    ) -> Dict[str, Any]:
+        """Summarize using multi source method with agents"""
+        service = get_multi_source_summary_service()
+        return service.get_multi_source_summary(
+            user_query=query,
+            user_intent=None,  # Let the service detect intent automatically
+        )
 
 
 class _SummarizationControllerSingleton:

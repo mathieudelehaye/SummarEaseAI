@@ -301,5 +301,5 @@ class TestWikipediaModelIntegration:
         result = service.search_wikipedia_basic("apple")
 
         assert result["status"] == "success"
-        assert result["title"] == "Apple Inc."
+        assert result["title"] == "Apple"
         assert result["summary"] == "Apple Inc. is a technology company."

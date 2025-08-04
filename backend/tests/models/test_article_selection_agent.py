@@ -176,8 +176,8 @@ class TestArticleSelectionAgent:
         mock_agent = Mock()
         mock_initialize_agent.return_value = mock_agent
 
-        # Initialize agent
-        agent = ArticleSelectionAgent(mock_llm)
+        # Create agent instance to trigger tool configuration
+        _ = ArticleSelectionAgent(mock_llm)
 
         # Verify tool was called with correct parameters
         mock_tool.assert_called_once()
