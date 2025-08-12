@@ -65,66 +65,140 @@ class LangChainAgentsModel:
             )
 
     def intelligent_wikipedia_search(
-        self, user_query: str, max_options: int = 5
+        self, user_queries: List[str], max_options: int = 5, top_n_articles: int = 1
     ) -> Dict[str, Any]:
         """
         Complete intelligent Wikipedia search using LangChain agents
 
+        Args:
+            user_queries: List of search queries to process
+            max_options: Max search results per query
+            top_n_articles: Number of top articles to select from all results
+
         Workflow:
-        1. Query Enhancement Agent improves the search query
-        2. Search Wikipedia with enhanced query
-        3. Article Selection Agent picks the best result
-        4. Return comprehensive result with reasoning
+        1. Query Enhancement Agent improves each search query
+        2. Search Wikipedia with enhanced queries
+        3. Collect all articles into single list
+        4. Article Selection Agent picks the best N results from all
+        5. Return comprehensive result with reasoning
         """
-        logger.info("🚀 Starting LangChain agent-powered search for: '%s'", user_query)
+        logger.info(
+            "🚀 Starting LangChain agent-powered search for %d queries",
+            len(user_queries),
+        )
 
         if not (self.query_enhancement_agent and self.article_selection_agent):
-            return self._fallback_search(user_query, max_options)
+            return self._fallback_search(user_queries, max_options, top_n_articles)
 
         try:
-            # Step 1: Enhance query using LangChain agent
-            enhancement_result = self.query_enhancement_agent.enhance_query(user_query)
-            enhanced_query = enhancement_result["enhanced_query"]
+            all_search_results = []
+            enhancement_results = []
 
-            logger.info("🧠 Query enhanced: '%s' → '%s'", user_query, enhanced_query)
+            # Step 1 & 2: Enhance each query and collect search results
+            for query in user_queries:
+                logger.info("🧠 Processing query: '%s'", query)
 
-            # Step 2: Search Wikipedia with enhanced query
-            search_results = wikipedia.search(enhanced_query, results=max_options)
+                # Enhance the query
+                enhancement_result = self.query_enhancement_agent.enhance_query(query)
+                enhanced_query = enhancement_result["enhanced_query"]
+                enhancement_results.append(
+                    {
+                        "original_query": query,
+                        "enhanced_query": enhanced_query,
+                        "enhancement_result": enhancement_result,
+                    }
+                )
 
-            if not search_results:
-                # Try original query as fallback
-                search_results = wikipedia.search(user_query, results=max_options)
-                logger.info("📚 Fallback search found %d articles", len(search_results))
-            else:
-                logger.info("📚 Enhanced search found %d articles", len(search_results))
+                logger.info("🧠 Query enhanced: '%s' → '%s'", query, enhanced_query)
 
-            if not search_results:
+                # Search with enhanced query
+                search_results = wikipedia.search(enhanced_query, results=max_options)
+                if not search_results:
+                    # Fallback to original query
+                    search_results = wikipedia.search(query, results=max_options)
+                    logger.info(
+                        "📚 Fallback search for '%s' found %d articles",
+                        query,
+                        len(search_results),
+                    )
+                else:
+                    logger.info(
+                        "📚 Enhanced search for '%s' found %d articles",
+                        query,
+                        len(search_results),
+                    )
+
+                # Add to combined results with metadata
+                for result in search_results:
+                    if result not in [item["title"] for item in all_search_results]:
+                        all_search_results.append(
+                            {
+                                "title": result,
+                                "source_query": query,
+                                "enhanced_query": enhanced_query,
+                            }
+                        )
+
+            logger.info(
+                "📚 Combined search found %d unique articles from all queries",
+                len(all_search_results),
+            )
+
+            if not all_search_results:
                 return {
-                    "error": "No Wikipedia articles found",
-                    "user_query": user_query,
-                    "enhanced_query": enhanced_query,
-                    "enhancement_result": enhancement_result,
+                    "error": "No Wikipedia articles found for any query",
+                    "user_queries": user_queries,
+                    "enhancement_results": enhancement_results,
                 }
 
-            # Step 3: Select best article using LangChain agent
-            selection_result = self.article_selection_agent.select_best_article(
-                user_query, search_results
+            # Step 3: Select top N articles from ALL results using ONE agent call
+            article_titles = [item["title"] for item in all_search_results]
+            combined_query = " OR ".join(
+                user_queries[:3]
+            )  # Combine queries for selection context
+
+            selection_result = self.article_selection_agent.select_top_n_articles(
+                combined_query, article_titles, top_n_articles
             )
-            selected_title = selection_result["selected_article"]
+            selected_titles = selection_result.get("selected_articles", [])
+            logger.info(
+                "🎯 Agent selected %d articles from %d candidates: %s",
+                len(selected_titles),
+                len(article_titles),
+                selected_titles,
+            )
 
-            logger.info("🎯 Agent selected: '%s'", selected_title)
-
-            # Step 4: Get the selected article content
-            article_info = self._fetch_article_content(selected_title, search_results)
+            # Step 4: Fetch content for selected articles
+            selected_articles = []
+            for article_title in selected_titles:
+                article_info = self._fetch_article_content(
+                    article_title, article_titles
+                )
+                if "error" not in article_info:
+                    # Add source query info
+                    source_info = next(
+                        (
+                            item
+                            for item in all_search_results
+                            if item["title"] == article_title
+                        ),
+                        {},
+                    )
+                    article_info["source_query"] = source_info.get("source_query", "")
+                    article_info["enhanced_query"] = source_info.get(
+                        "enhanced_query", ""
+                    )
+                    selected_articles.append(article_info)
 
             return {
-                "user_query": user_query,
-                "enhancement_result": enhancement_result,
-                "search_results": search_results,
+                "user_queries": user_queries,
+                "enhancement_results": enhancement_results,
+                "all_search_results": all_search_results,
+                "selected_articles": selected_articles,
                 "selection_result": selection_result,
-                "article_info": article_info,
-                "agent_system": "agents_service",
-                "total_articles_considered": len(search_results),
+                "agent_system": "agents_service_multi_query",
+                "total_articles_considered": len(all_search_results),
+                "articles_selected": len(selected_articles),
                 "agents_used": ["QueryEnhancementAgent", "ArticleSelectionAgent"],
             }
 
@@ -136,7 +210,7 @@ class LangChainAgentsModel:
             ConnectionError,
         ) as e:
             logger.error("❌ LangChain agent search failed: %s", str(e))
-            return self._fallback_search(user_query, max_options)
+            return self._fallback_search(user_queries, max_options, top_n_articles)
 
     def _fetch_article_content(
         self, selected_title: str, search_results: List[str]
@@ -197,24 +271,51 @@ class LangChainAgentsModel:
 
             return {"error": f"Failed to get article: {str(e)}"}
 
-    def _fallback_search(self, user_query: str, max_options: int) -> Dict[str, Any]:
+    def _fallback_search(
+        self, user_queries: List[str], max_options: int, top_n_articles: int = 1
+    ) -> Dict[str, Any]:
         """Fallback search without LangChain agents"""
         try:
-            search_results = wikipedia.search(user_query, results=max_options)
+            all_search_results = []
 
-            if not search_results:
+            for query in user_queries:
+                search_results = wikipedia.search(query, results=max_options)
+                for result in search_results:
+                    if result not in [item["title"] for item in all_search_results]:
+                        all_search_results.append(
+                            {
+                                "title": result,
+                                "source_query": query,
+                                "enhanced_query": query,
+                            }
+                        )
+
+            if not all_search_results:
                 return {"error": "No Wikipedia articles found"}
 
-            # Use first result as fallback
-            selected_title = search_results[0]
-            article_info = self._fetch_article_content(selected_title, search_results)
+            # Select top N articles (simple: take first N unique results)
+            selected_titles = [
+                item["title"] for item in all_search_results[:top_n_articles]
+            ]
+            selected_articles = []
+
+            for title in selected_titles:
+                article_info = self._fetch_article_content(title, selected_titles)
+                if "error" not in article_info:
+                    source_info = next(
+                        (item for item in all_search_results if item["title"] == title),
+                        {},
+                    )
+                    article_info["source_query"] = source_info.get("source_query", "")
+                    selected_articles.append(article_info)
 
             return {
-                "user_query": user_query,
-                "search_results": search_results,
-                "article_info": article_info,
-                "agent_system": "fallback_basic_search",
-                "total_articles_considered": len(search_results),
+                "user_queries": user_queries,
+                "all_search_results": all_search_results,
+                "selected_articles": selected_articles,
+                "agent_system": "fallback_multi_search",
+                "total_articles_considered": len(all_search_results),
+                "articles_selected": len(selected_articles),
             }
 
         except (

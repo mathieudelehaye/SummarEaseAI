@@ -284,6 +284,40 @@ class MultiSourceAgentService(CommonSourceSummaryService):
         self, search_queries: List[str], original_query: str
     ) -> List[Dict[str, Any]]:
         """Search for articles using multiple queries and methods"""
+        # Try LangChain agents first if enabled - pass ALL queries at once
+        if self.config["limits"]["enable_agents"]:
+            try:
+                max_articles = self.config["limits"]["max_articles"]
+                article_result = self.services[
+                    "agents_service"
+                ].intelligent_wikipedia_search(
+                    user_queries=search_queries,
+                    max_options=5,
+                    top_n_articles=min(3, max_articles),
+                )
+
+                if (
+                    "selected_articles" in article_result
+                    and article_result["selected_articles"]
+                ):
+                    self.usage["wikipedia_calls_made"] += len(search_queries)
+                    logger.info(
+                        "🎯 LangChain multi-query agents found %d articles from %d queries",
+                        len(article_result["selected_articles"]),
+                        len(search_queries),
+                    )
+                    return article_result["selected_articles"]
+
+                logger.warning(
+                    "⚠️ Multi-query agents failed, falling back to individual search"
+                )
+            except Exception as e:
+                logger.warning(
+                    "⚠️ Multi-query agents failed: %s, falling back to individual search",
+                    str(e),
+                )
+
+        # Fallback to individual query processing
         articles_data = []
         seen_titles = set()
 
@@ -306,11 +340,37 @@ class MultiSourceAgentService(CommonSourceSummaryService):
                 break
 
             try:
-                # Try LangChain agents first if enabled
+                # Try LangChain agents for individual query
                 if self.config["limits"]["enable_agents"]:
+                    remaining_slots = self.config["limits"]["max_articles"] - len(
+                        articles_data
+                    )
+                    top_n = min(3, remaining_slots) if remaining_slots > 1 else 1
+
                     article_result = self.services[
                         "agents_service"
-                    ].intelligent_wikipedia_search(query)
+                    ].intelligent_wikipedia_search(query, top_n_articles=top_n)
+
+                    # Handle multiple articles response
+                    if (
+                        "selected_articles" in article_result
+                        and article_result["selected_articles"]
+                    ):
+                        for article_info in article_result["selected_articles"]:
+                            if (
+                                "error" not in article_info
+                                and article_info["title"] not in seen_titles
+                            ):
+                                articles_data.append(article_info)
+                                seen_titles.add(article_info["title"])
+                                logger.info(
+                                    "🎯 LangChain agents found: '%s'",
+                                    article_info["title"],
+                                )
+                        self.usage["wikipedia_calls_made"] += 1
+                        continue
+
+                    # Handle single article response (backward compatibility)
                     if (
                         "article_info" in article_result
                         and "error" not in article_result["article_info"]
@@ -326,7 +386,6 @@ class MultiSourceAgentService(CommonSourceSummaryService):
                         continue
 
                 # Fallback to regular Wikipedia search
-                # Initialize Wikipedia service
                 wikipedia_service = WikipediaModel()
                 article_info = wikipedia_service.search_and_fetch_article_info(query)
                 self.usage["wikipedia_calls_made"] += 1
