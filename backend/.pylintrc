@@ -18,6 +18,8 @@ disable=
     R0914,   # Too many local variables
     R0915,   # Too many statements
     R0911,   # Too many return statements
+    R1702,  # Too many nested blocks
+    R0912,  # Too many branches
 
 [TYPECHECK]
 generated-members=
