@@ -18,6 +18,7 @@
 
 ### 🎯 **Frontend Application**
 **Live URL**: https://summarease-frontend.onrender.com
+> **⏳ Note:** The first question to the chatbot may take a couple of seconds to respond as the system initializes. Subsequent questions will be much faster.
 
 ### 🤖 **Backend API**
 **Live URL**: https://mdelehaye-summarease-backend.hf.space
