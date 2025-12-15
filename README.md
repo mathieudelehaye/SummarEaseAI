@@ -36,26 +36,26 @@
 <p align="left">
     <img src="screenshots/Screenshot00.png" alt="Main Interface" width="80%">
 </p>
-*The main summarization interface showing multi-source intelligence with Wikipedia article synthesis, intent classification results, and real-time confidence scoring.*
-
+_The main summarization interface showing multi-source intelligence with Wikipedia article synthesis, intent classification results, and real-time confidence scoring.
+_
 ### 🧠 Intent Analysis Dashboard
 <p align="left">
     <img src="screenshots/Screenshot01.png" alt="Intent Analysis Dashboard" width="80%">
 </p>
-*Advanced intent classification dashboard with Hugging Face TinyBERT model (PyTorch-based), featuring interactive confidence gauges and detailed model performance metrics.*
-
+_Advanced intent classification dashboard with Hugging Face TinyBERT model (PyTorch-based), featuring interactive confidence gauges and detailed model performance metrics.
+_
 ### 🧠 Agentic Workflow
 <p align="left">
     <img src="screenshots/Screenshot02.png" alt="Agentic Workflow" width="80%">
 </p>
-*Optimised Agentic Workflow implemented using the **LangChain** framework [https://docs.langchain.com/] and the OpenAI API [https://openai.com/api/].*
-
+_Optimised Agentic Workflow implemented using the LangChain framework and OpenAI API.
+_
 ### 🎯 Model Comparison & Analytics
 <p align="left">
     <img src="screenshots/Screenshot03.png" alt="Model Comparison Analytics" width="80%">
 </p>    
-*Comprehensive model comparison view showing performance analytics, response times, and accuracy metrics across different AI models and endpoints.*
-
+_Comprehensive model comparison view showing performance analytics, response times, and accuracy metrics across different AI models and endpoints.
+_
 ---
 
 ## 🎯 Currently Working Features ✅
