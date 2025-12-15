@@ -43,9 +43,15 @@
 </p>
 *Advanced intent classification dashboard with Hugging Face TinyBERT model (PyTorch-based), featuring interactive confidence gauges and detailed model performance metrics.*
 
+### 🧠 Agentic Workflow
+<p align="left">
+    <img src="screenshots/Screenshot02.png" alt="Agentic Workflow" width="80%">
+</p>
+*Optimised Agentic Workflow implemented using the **LangChain** framework [https://docs.langchain.com/] and the OpenAI API [https://openai.com/api/].*
+
 ### 🎯 Model Comparison & Analytics
 <p align="left">
-    <img src="screenshots/Screenshot02.png" alt="Model Comparison Analytics" width="80%">
+    <img src="screenshots/Screenshot03.png" alt="Model Comparison Analytics" width="80%">
 </p>    
 *Comprehensive model comparison view showing performance analytics, response times, and accuracy metrics across different AI models and endpoints.*
 
